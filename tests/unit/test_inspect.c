@@ -24,6 +24,17 @@ static void feed(PtySession *s, const char *text) {
     pty_feed(s, text, strlen(text));
 }
 
+/* Asserts that a report contains @p needle, printing the report if not:
+ * a report test that fails without showing the report is undiagnosable. */
+#define ASSERT_HAS(report, needle, msg) do { \
+    g_tests_run++; \
+    if (!strstr(report, needle)) { \
+        PTY_ASSERT_FAIL_("%s: the report lacks \"%s\"; report was:\n%s", \
+                         msg, needle, report); \
+        return; \
+    } \
+} while (0)
+
 /* ── Row and screen text ─────────────────────────────────────────────── */
 
 static void test_row_text(void) {
@@ -115,14 +126,21 @@ static void test_compare_mismatch(void) {
         "+--------+",
         NULL
     };
-    char report[512];
+    char report[4096];
     ASSERT(pty_screen_compare(s, expected, report, sizeof(report)) == 2,
            "one shifted row and one unexpected row");
-    ASSERT(strstr(report, "row  1 differs at col 2") != NULL,
-           "report names the row and the first differing column");
-    ASSERT(strstr(report, "expected ||  menu  ||") != NULL, "report has the expectation");
-    ASSERT(strstr(report, "actual   || menu   ||") != NULL, "report has the observation");
-    ASSERT(strstr(report, "row  3 differs") != NULL, "a stray row is a mismatch");
+    ASSERT_HAS(report, "screen (12x4): text differs in 2 of 4 rows", "header names the area and the count");
+    ASSERT_HAS(report, "        0----+----1-\n", "column ruler");
+    ASSERT_HAS(report, "-    1 ||  menu  |  |\n+    1 || menu   |  |\n", "expected and actual row, framed, one under the other");
+    ASSERT_HAS(report, "\n          ^^^^^\n", "a caret under every differing column");
+    ASSERT_HAS(report, "     0 |+--------+  |\n", "context row shown");
+    ASSERT_HAS(report, "  row 1: cols 2-6 differ\n", "ranges of columns");
+    ASSERT_HAS(report, "the text in cols 2-6 is shifted left by 1 column",
+               "an off-by-one inside the frame is named");
+    ASSERT_HAS(report, "first difference at col 2: expected ' ' U+0020, "
+                          "actual 'm' U+006D", "first cell with code points");
+    ASSERT_HAS(report, "-    3 |            |\n+    3 |stray       |\n", "a stray row is a difference");
+    ASSERT_HAS(report, "  row 3: cols 0-4 differ\n    expected a blank row\n", "and is called one");
     ASSERT(pty_screen_compare(s, expected, NULL, 0) == 2, "report is optional");
 
     char tiny[8];
@@ -135,19 +153,28 @@ static void test_compare_leading_blanks_matter(void) {
     PtySession *s = term(10, 2);
     feed(s, " x");
     const char *const shifted[] = { "x", NULL };
-    ASSERT(pty_screen_compare(s, shifted, NULL, 0) == 1,
+    char report[2048];
+    ASSERT(pty_screen_compare(s, shifted, report, sizeof(report)) == 1,
            "a column shift is a difference");
+    ASSERT_HAS(report, "the text is shifted right by 1 column", "and is explained as a shift");
     pty_close(s);
 }
 
 static void test_compare_too_many_rows(void) {
     PtySession *s = term(10, 2);
     const char *const expected[] = { "a", "b", "c", NULL };
-    char report[128];
+    char report[256];
     ASSERT(pty_screen_compare(s, expected, report, sizeof(report)) == -1,
            "more expected rows than the screen has");
-    ASSERT(strstr(report, "expected 3 rows but the screen has 2") != NULL,
-           "and the report says so");
+    ASSERT_HAS(report, "the expectation has 3 rows but the screen has 2", "and the report says so");
+    const char *const wide[] = { "0123456789X", NULL };
+    ASSERT(pty_screen_compare(s, wide, report, sizeof(report)) == -1,
+           "a row wider than the screen");
+    ASSERT_HAS(report, "expected row 0 (screen row 0) is 11 columns wide, "
+                          "the screen only 10", "is reported");
+    const char *const blanks[] = { "          ", NULL };
+    ASSERT(pty_screen_compare(s, blanks, NULL, 0) == 0,
+           "trailing blanks do not count as width");
     ASSERT(pty_screen_compare(s, NULL, NULL, 0) == -1, "NULL expectation");
     ASSERT(pty_screen_compare(NULL, expected, NULL, 0) == -1, "NULL session");
     pty_close(s);
@@ -159,6 +186,237 @@ static void test_compare_wide(void) {
     const char *const expected[] = { "\xE6\x97\xA5\xE6\x9C\xAC|", NULL };
     ASSERT_SCREEN_EQ(s, expected);
     ASSERT_CELL_TEXT(s, 0, 4, "|");   /* two wide characters, four columns */
+    const char *const narrow[] = { "\xE6\x97\xA5|", NULL };
+    char report[2048];
+    ASSERT(pty_screen_compare(s, narrow, report, sizeof(report)) == 1,
+           "a missing wide character is a difference");
+    ASSERT_HAS(report, "+    0 |\xE6\x97\xA5\xE6\x9C\xAC|     |\n", "rows keep their width with wide characters");
+    pty_close(s);
+}
+
+/* ── Regions ─────────────────────────────────────────────────────────── */
+
+static void test_region_compare(void) {
+    PtySession *s = term(20, 5);
+    feed(s, "Title          12:03\r\n\r\n  \xE2\x94\x8C\xE2\x94\x80\xE2\x94\x90"
+            "\r\n  \xE2\x94\x82x\xE2\x94\x82\r\n  \xE2\x94\x94\xE2\x94\x80\xE2\x94\x98 junk");
+    const char *const box[] = { "┌─┐", "│x│", "└─┘", NULL };
+    ASSERT_REGION_EQ(s, PTY_REGION(2, 2, 3, 3), box);   /* "junk" is outside */
+
+    PtyRegion clock = PTY_REGION(0, 15, 1, 5);
+    clock.label = "clock";
+    clock.wildcard = "?";
+    const char *const any_time[] = { "??:??", NULL };
+    ASSERT_REGION_EQ(s, clock, any_time);
+    const char *const other[] = { "1?:5?", NULL };
+    char report[2048];
+    ASSERT(pty_region_compare(s, &clock, other, report, sizeof(report)) == 1,
+           "the wildcard matches only where it stands");
+    ASSERT_HAS(report, "region \"clock\" rows 0-0, cols 15-19: text differs in 1 of 1 row", "the label and the absolute geometry are in the header");
+    ASSERT_HAS(report, "        +----\n", "ruler counts screen columns");
+    ASSERT_HAS(report, "  row 0: col 18 differs", "absolute column");
+
+    const char *const two_rows[] = { "a", "b", NULL };
+    ASSERT(pty_region_compare(s, &clock, two_rows, report, sizeof(report)) == -1,
+           "more rows than the region");
+    ASSERT_HAS(report, "the expectation has 2 rows but the region has 1", "says region, not screen");
+    const char *const blank[] = { NULL };
+    ASSERT(pty_region_compare(s, &PTY_REGION(1, 0, 1, 0), blank, NULL, 0) == 0,
+           "size 0 extends to the screen edge");
+    ASSERT(pty_region_compare(s, &PTY_REGION(4, 18, 2, 3), blank, report,
+                              sizeof(report)) == -1, "region outside the screen");
+    ASSERT_HAS(report, "region rows 4-5, cols 18-20 is outside the 20x5 screen", "is reported with its geometry");
+    ASSERT(pty_region_compare(s, &PTY_REGION(-1, 0, 1, 1), blank, NULL, 0) == -1,
+           "negative origin");
+    pty_close(s);
+}
+
+static void test_report_notes(void) {
+    PtySession *s = term(20, 8);
+    feed(s, "\033[2;1HHello world\033[4;1Hstatus: OK\033[5;1Hab cdef"
+            "\033[6;1Hnbsp\xC2\xA0x\033[7;1Hhead\033[8;1Hshort");
+    const char *const expected[] = {
+        "Hello world",            /* moved: it is on row 1 */
+        "",
+        "",
+        "status: ok",             /* letter case */
+        "ab  cdef",               /* shifted from the middle */
+        "nbsp x",                 /* U+00A0 instead of a space */
+        "headline",               /* truncated */
+        "sh",                     /* extra text */
+        NULL
+    };
+    char report[8192];
+    int n = pty_screen_compare(s, expected, report, sizeof(report));
+    g_tests_run++;
+    if (n != 7) {
+        PTY_ASSERT_FAIL_("expected 7 differing rows, got %d; report:\n%s", n, report);
+        pty_close(s);
+        return;
+    }
+    ASSERT_HAS(report, "the expected text is on row 1 (1 row lower)", "a row moved down is found");
+    ASSERT_HAS(report, "nothing is shown on this row", "a blank row");
+    ASSERT_HAS(report, "differs only in letter case", "letter case");
+    ASSERT_HAS(report, "the text in cols 3-7 is shifted left by 1 column", "a shift in the middle of a row");
+    ASSERT_HAS(report, "expected ' ' U+0020, actual '\xC2\xA0' U+00A0", "an invisible difference is spelled out in code points");
+    ASSERT_HAS(report, "  row 5: col 4 differs\n    a different kind of blank",
+               "and named as such");
+    ASSERT_HAS(report, "  row 6: cols 4-7 differ\n    truncated", "truncation wins over "
+               "blanks matching blanks");
+    ASSERT_HAS(report, "truncated: matches up to col 3, the expected text "
+                          "continues to col 7", "truncation");
+    ASSERT_HAS(report, "extra text: matches up to col 1, then cols 2-4 should "
+                          "be blank", "extra text");
+    ASSERT(strstr(report, "     ...\n") == NULL, "no gap: every row is shown");
+
+    PtyRegion quiet = PTY_REGION_FULL;
+    quiet.context = -1;
+    pty_region_compare(s, &quiet, expected, report, sizeof(report));
+    ASSERT(strstr(report, "     2 |") == NULL || strstr(report, "-    2 |") != NULL,
+           "no context rows when context is negative");
+    pty_close(s);
+}
+
+static void test_report_moved_block(void) {
+    PtySession *s = term(12, 6);
+    feed(s, "\r\n\r\none\r\ntwo");
+    const char *const expected[] = { "", "one", "two", NULL };
+    char report[4096];
+    ASSERT(pty_screen_compare(s, expected, report, sizeof(report)) == 3, "three rows");
+    ASSERT_HAS(report, "every missing row is 1 row lower than expected: the content "
+                          "has moved as a block", "a block move is named");
+    pty_close(s);
+}
+
+static void test_report_context_gap(void) {
+    PtySession *s = term(6, 12);
+    feed(s, "x");
+    const char *const expected[] = { "y", NULL };
+    char report[4096];
+    pty_screen_compare(s, expected, report, sizeof(report));
+    ASSERT_HAS(report, "     2 |      |\n     ...\n", "two context rows, then an ellipsis");
+    ASSERT(strstr(report, "     3 |") == NULL, "rows beyond the context are left out");
+    pty_close(s);
+}
+
+/* ── Styles ──────────────────────────────────────────────────────────── */
+
+static const PtyStyleKey legend[] = {
+    { '.', PTY_ATTR_NONE,    PTY_FG_DEFAULT, PTY_BG_DEFAULT },
+    { 'R', PTY_ATTR_REVERSE, PTY_FG_DEFAULT, PTY_BG_DEFAULT },
+    { 'b', PTY_ATTR_BOLD,    PTY_FG_DEFAULT, PTY_BG_BLUE },
+    { 0, 0, 0, 0 }
+};
+
+static void test_style_compare(void) {
+    PtySession *s = term(12, 3);
+    feed(s, "\033[1;44mTitle\033[0m\r\n\033[7m item \033[0m\r\n\033[31mred\033[0m");
+    const char *const ok[] = { "bbbbb.", "RRRRRR..", NULL };
+    ASSERT_REGION_STYLE(s, PTY_REGION_FULL, ok, legend);
+
+    char map[256];
+    pty_region_style_map(s, &PTY_REGION(0, 0, 3, 8), legend, map, sizeof(map));
+    ASSERT(strcmp(map, "bbbbb...\nRRRRRR..\n###.....") == 0,
+           "style map in the legend, '#' for an unknown style");
+
+    const char *const off[] = { "bbbbb", ".RRRRRR.", NULL };
+    PtyRegion reg = PTY_REGION_FULL;
+    reg.label = "menu";
+    char report[4096];
+    ASSERT(pty_region_compare_style(s, &reg, off, legend, report, sizeof(report)) == 1,
+           "highlight one column off");
+    ASSERT_HAS(report, "legend: .=plain; R=reverse; b=bold, bg blue (44)", "the legend is spelled out");
+    ASSERT_HAS(report, "-    1 |.RRRRRR.|\n+    1 |RRRRRR......|\n", "expected and actual maps");
+    ASSERT_HAS(report, "  text | item       |\n", "the text under the map");
+    ASSERT_HAS(report, "the styling is shifted left by 1 column", "the shift is named");
+    ASSERT_HAS(report, "first difference at col 0 (' ' U+0020): expected . = plain, "
+                          "actual R = reverse", "the first cell in words");
+
+    const char *const unknown[] = { "", "", "...", NULL };
+    ASSERT(pty_region_compare_style(s, NULL, unknown, legend, report, sizeof(report)) == 1,
+           "an unknown style differs from any key");
+    ASSERT_HAS(report, "actual # = fg red (31)", "and is described");
+
+    PtyRegion wild = PTY_REGION_FULL;
+    wild.wildcard = "*";
+    const char *const star[] = { "*****", "R*****", NULL };
+    ASSERT(pty_region_compare_style(s, &wild, star, legend, NULL, 0) == 0,
+           "the wildcard matches any style");
+
+    const char *const bad[] = { "x", NULL };
+    ASSERT(pty_region_compare_style(s, NULL, bad, legend, report, sizeof(report)) == -1,
+           "a key not in the legend");
+    ASSERT_HAS(report, "style map row 0, col 0: 'x' is not in the legend", "is reported");
+    const char *const longrow[] = { "..............", NULL };
+    ASSERT(pty_region_compare_style(s, NULL, longrow, legend, NULL, 0) == -1,
+           "a map row wider than the region");
+    pty_close(s);
+}
+
+/* ── Describing and snapshots ────────────────────────────────────────── */
+
+static void test_cell_describe(void) {
+    PtySession *s = term(10, 2);
+    feed(s, "\033[1;7;38;5;196;48;2;0;128;255mA\033[0m\xE6\x97\xA5" "e\xCC\x81");
+    char d[256];
+    ASSERT(strcmp(pty_cell_describe(s, 0, 0, d, sizeof(d)),
+                  "'A' U+0041, bold, reverse, fg palette 196, bg #0080ff") == 0,
+           "character, attributes and both colours");
+    ASSERT(strcmp(pty_cell_describe(s, 0, 2, d, sizeof(d)),
+                  "(right half of '\xE6\x97\xA5' U+65E5), plain") == 0,
+           "the tail of a wide character");
+    ASSERT(strcmp(pty_cell_describe(s, 0, 3, d, sizeof(d)),
+                  "'e\xCC\x81' U+0065 U+0301, plain") == 0,
+           "every code point of a combined cell");
+    feed(s, "\r\n\033[92;100mx");
+    ASSERT(strcmp(pty_cell_describe(s, 1, 0, d, sizeof(d)),
+                  "'x' U+0078, fg bright green (92), bg bright black (100)") == 0,
+           "bright colours by name");
+    ASSERT(strcmp(pty_cell_describe(s, 9, 9, d, sizeof(d)), "") == 0, "out of range");
+    pty_close(s);
+}
+
+static void test_dump_c(void) {
+    PtySession *s = term(10, 4);
+    feed(s, "say \"hi\"\r\nback\\slash");
+    char *text = NULL;
+    size_t len = 0;
+    FILE *fp = open_memstream(&text, &len);
+    ASSERT(fp != NULL, "open_memstream");
+    pty_region_dump_c(s, NULL, fp);
+    fclose(fp);
+    ASSERT(strcmp(text, "const char *const expected[] = {\n"
+                        "    \"say \\\"hi\\\"\",\n"
+                        "    \"back\\\\slash\",\n"
+                        "    NULL\n};\n") == 0,
+           "quotes and backslashes escaped, trailing blank rows left out");
+    free(text);
+    pty_close(s);
+}
+
+static void test_dump_ansi(void) {
+    PtySession *s = term(6, 2);
+    feed(s, "a\033[1;31mb\033[0;38;5;9;48;2;1;2;3mc");
+    char *text = NULL;
+    size_t len = 0;
+    FILE *fp = open_memstream(&text, &len);
+    ASSERT(fp != NULL, "open_memstream");
+    pty_screen_dump_ansi(s, fp);
+    fclose(fp);
+    ASSERT(strcmp(text, "\033[0ma\033[0;1;31mb\033[0;38;5;9;48;2;1;2;3mc\033[0m   "
+                        "\033[0m\r\n\033[0m      \033[0m") == 0,
+           "styles become SGR sequences, rows end in CR LF but the last");
+    /* Round trip: feeding the dump reproduces the screen. */
+    PtySession *copy = term(6, 2);
+    pty_feed(copy, text, len);
+    ASSERT_CELL_FG(copy, 0, 1, PTY_FG_RED);
+    ASSERT_CELL_ATTR_EQ(copy, 0, 1, PTY_ATTR_BOLD);
+    ASSERT_CELL_FG(copy, 0, 2, PTY_COLOR_IDX(9));
+    ASSERT_CELL_BG(copy, 0, 2, PTY_COLOR_RGB(1, 2, 3));
+    const char *const same[] = { "abc", NULL };
+    ASSERT_SCREEN_EQ(copy, same);
+    free(text);
+    pty_close(copy);
     pty_close(s);
 }
 
@@ -334,6 +592,14 @@ int main(int argc, char **argv) {
         TEST_CASE(test_compare_leading_blanks_matter),
         TEST_CASE(test_compare_too_many_rows),
         TEST_CASE(test_compare_wide),
+        TEST_CASE(test_region_compare),
+        TEST_CASE(test_report_notes),
+        TEST_CASE(test_report_moved_block),
+        TEST_CASE(test_report_context_gap),
+        TEST_CASE(test_style_compare),
+        TEST_CASE(test_cell_describe),
+        TEST_CASE(test_dump_c),
+        TEST_CASE(test_dump_ansi),
         TEST_CASE(test_dump),
         TEST_CASE(test_cell_accessors_out_of_range),
         TEST_CASE(test_no_child),
@@ -345,5 +611,5 @@ int main(int argc, char **argv) {
     };
     return test_run_suite("inspection unit tests", tests,
                           sizeof(tests) / sizeof(tests[0]),
-                          90, 60, argc, argv);
+                          155, 60, argc, argv);
 }

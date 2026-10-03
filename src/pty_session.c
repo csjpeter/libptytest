@@ -11,7 +11,6 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
-#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -460,79 +459,6 @@ char *pty_screen_text(PtySession *s, char *buf, size_t size) {
     buf[pos] = '\0';
     free(row);
     return buf;
-}
-
-/* Appends printf-style text to report, keeping it NUL-terminated. */
-static void report_add(char *report, size_t size, size_t *pos, const char *fmt, ...)
-    __attribute__((format(printf, 4, 5)));
-
-static void report_add(char *report, size_t size, size_t *pos, const char *fmt, ...) {
-    if (!report || *pos + 1 >= size) return;
-    va_list ap;
-    va_start(ap, fmt);
-    int n = vsnprintf(report + *pos, size - *pos, fmt, ap);
-    va_end(ap);
-    if (n > 0) *pos += (size_t)n < size - *pos ? (size_t)n : size - *pos - 1;
-}
-
-/* Copies @p in without its trailing spaces. */
-static char *dup_trimmed(const char *in) {
-    size_t len = strlen(in);
-    while (len > 0 && in[len - 1] == ' ') len--;
-    char *out = malloc(len + 1);
-    if (!out) return NULL;
-    memcpy(out, in, len);
-    out[len] = '\0';
-    return out;
-}
-
-/* Column (in characters) of the first difference between two strings. */
-static int first_diff_col(const char *a, const char *b) {
-    int col = 0;
-    while (*a && *a == *b) {
-        if (((unsigned char)*a & 0xC0) != 0x80) col++;
-        a++;
-        b++;
-    }
-    /* Step back to the start of the character that differs. */
-    return col > 0 && ((unsigned char)*a & 0xC0) == 0x80 ? col - 1 : col;
-}
-
-int pty_screen_compare(PtySession *s, const char *const expected[],
-                       char *report, size_t report_size) {
-    size_t pos = 0;
-    if (report && report_size) report[0] = '\0';
-    if (!s || !s->screen || !expected) return -1;
-
-    int nexp = 0;
-    while (expected[nexp]) nexp++;
-    if (nexp > s->rows) {
-        report_add(report, report_size, &pos,
-                   "expected %d rows but the screen has %d\n", nexp, s->rows);
-        return -1;
-    }
-
-    size_t rsize = row_buf_size(s);
-    char *actual = malloc(rsize);
-    if (!actual) return -1;
-
-    int mismatches = 0;
-    for (int r = 0; r < s->rows; r++) {
-        pty_row_text(s, r, actual, rsize);
-        char *want = dup_trimmed(r < nexp ? expected[r] : "");
-        if (!want) { free(actual); return -1; }
-        if (strcmp(want, actual) != 0) {
-            mismatches++;
-            report_add(report, report_size, &pos,
-                       "row %2d differs at col %d\n"
-                       "  expected |%s|\n"
-                       "  actual   |%s|\n",
-                       r, first_diff_col(want, actual), want, actual);
-        }
-        free(want);
-    }
-    free(actual);
-    return mismatches;
 }
 
 void pty_screen_dump(PtySession *s, FILE *fp) {

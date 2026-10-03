@@ -20,8 +20,20 @@ keeps its own copy and is not changed by this project.
 The public API is a superset of the original: existing tests compile unchanged
 (`pty_send*` now return `int` instead of `void`).
 
-- **Full-screen, cell-exact comparison**: `pty_screen_compare()`,
-  `ASSERT_SCREEN_EQ`, with a report naming row and column of each difference.
+- **Cell-exact comparison of the screen or any rectangle of it**:
+  `pty_region_compare()` / `ASSERT_REGION_EQ`, `ASSERT_SCREEN_EQ`, with a
+  label for the report and a wildcard for cells a test cannot know (clocks).
+- **Reports that explain the difference**, not only locate it: a diff view
+  (expected `-`, actual `+`) under a ruler of screen columns, carets under
+  every differing cell, context rows, and notes — *moved to row 4*, *moved as
+  a block*, *shifted left by 1 column*, *truncated*, *extra text*, *letter
+  case*, *a different kind of blank* — with the code points of the first
+  differing cell.
+- **Style maps**: `pty_region_compare_style()` / `ASSERT_REGION_STYLE` check
+  attributes and colours as a picture, one legend character per cell.
+- **Evidence**: `pty_cell_describe()`, `pty_screen_dump_ansi()` (colours,
+  replayable with `pty_feed()`), `pty_region_dump_c()` and
+  `PTYTEST_SNAPSHOT=1` (the actual screen as a C literal).
 - **Background colours**, 256-colour and direct colour, for foreground and
   background, reported in the form the program selected them.
 - **A real parser state machine**: a sequence split across two PTY reads used
@@ -63,7 +75,11 @@ static void test_menu(void) {
         " Tiny menu", "", " > Open", "   Save", "   Quit", "",
         "Up/Down, Enter, q", NULL };
     ASSERT_SCREEN_EQ(s, screen);
-    ASSERT_CELL_ATTR_EQ(s, 2, 1, PTY_ATTR_REVERSE);
+
+    static const PtyStyleKey legend[] = {
+        { '.', PTY_ATTR_NONE, 0, 0 }, { 'R', PTY_ATTR_REVERSE, 0, 0 }, { 0 } };
+    const char *const style[] = { ".RRRRRRRR", NULL };
+    ASSERT_REGION_STYLE(s, PTY_REGION(2, 0, 1, 12), style, legend);
     pty_send_key(s, PTY_KEY_ENTER);
     ASSERT_EXIT_STATUS(s, 0, 3000);
     pty_close(s);
@@ -94,6 +110,7 @@ overview) and one page per function group.
 ```
 include/        ptytest.h, pty_assert.h          (public)
 src/            pty_session.c  PTY, child, input, inspection
+                pty_compare.c  region/style comparison, explaining reports
                 pty_sync.c     reading, waiting
                 pty_screen.c   terminal emulator
                 pty_internal.h

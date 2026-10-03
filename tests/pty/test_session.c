@@ -248,6 +248,32 @@ static void test_full_screen_frame(void) {
     int r, c;
     ASSERT(pty_cursor(s, &r, &c) == 0, "cursor hidden while drawing");
 
+    /* The box alone, as a region, and its styles as a map. */
+    PtyRegion box = PTY_REGION(1, 2, 4, 12);
+    box.label = "box";
+    const char *const box_text[] = {
+        "┌──────────┐",
+        "│ Title    │",
+        "│> item 1  │",
+        "└──────────┘",
+        NULL
+    };
+    ASSERT_REGION_EQ(s, box, box_text);
+    static const PtyStyleKey legend[] = {
+        { '.', PTY_ATTR_NONE,    PTY_FG_DEFAULT, PTY_BG_DEFAULT },
+        { 'T', PTY_ATTR_BOLD,    PTY_FG_DEFAULT, PTY_BG_BLUE },
+        { 'R', PTY_ATTR_REVERSE, PTY_FG_DEFAULT, PTY_BG_DEFAULT },
+        { 0, 0, 0, 0 }
+    };
+    const char *const box_style[] = {
+        "............",
+        ".TTTTTTTTTT.",
+        ".RRRRRRRRRR.",
+        "............",
+        NULL
+    };
+    ASSERT_REGION_STYLE(s, box, box_style, legend);
+
     pty_send_str(s, "q");
     ASSERT_WAIT_FOR(s, "BYE", 3000);
     ASSERT_SCREEN_NOT_CONTAINS(s, "Title");   /* back on the main screen */
@@ -411,5 +437,5 @@ int main(int argc, char **argv) {
     };
     return test_run_suite("PTY session tests", tests,
                           sizeof(tests) / sizeof(tests[0]),
-                          115, 100, argc, argv);
+                          117, 100, argc, argv);
 }

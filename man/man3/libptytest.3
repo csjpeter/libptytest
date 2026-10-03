@@ -64,8 +64,18 @@ l l.
 \fBpty_screen_contains\fP(3)	substring anywhere
 \fBpty_screen_is_blank\fP(3)	nothing on the screen
 \fBpty_screen_text\fP(3)	the whole screen as text
-\fBpty_screen_compare\fP(3)	whole-screen, cell-exact comparison
+\fBpty_cell_describe\fP(3)	a cell in words, with code points
+.TE
+.SS Comparison and evidence
+.TS
+l l.
+\fBpty_region_compare\fP(3)	a rectangle, cell for cell, explained
+\fBpty_screen_compare\fP(3)	the whole screen, cell for cell
+\fBpty_region_compare_style\fP(3)	attributes and colours, as a map
+\fBpty_region_style_map\fP(3)	the actual style map
 \fBpty_screen_dump\fP(3)	print the screen, framed
+\fBpty_screen_dump_ansi\fP(3)	print it with its colours
+\fBpty_region_dump_c\fP(3)	print a region as a C literal
 .TE
 .SS Assertions
 .BR pty_assert (3)

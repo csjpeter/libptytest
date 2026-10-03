@@ -302,18 +302,120 @@ PTYTEST_API int pty_screen_is_blank(PtySession *s);
  */
 PTYTEST_API char *pty_screen_text(PtySession *s, char *buf, size_t size);
 
-/**
- * @brief Compares the whole screen with @p expected, row by row.
+/* ── Comparison ──────────────────────────────────────────────────────────
  *
- * @p expected is a NULL-terminated array of row strings; rows past the end
- * of the array are expected to be blank.  Trailing blanks are not
- * significant; everything else is, including leading blanks.
- * When @p report is not NULL it receives a description of every mismatch.
- * @return 0 if the screen matches, the number of mismatching rows
- *         otherwise, or -1 if @p expected has more rows than the screen.
+ * Expectations are written as pictures: an array of UTF-8 row strings,
+ * NULL-terminated, one per row from the top of the compared area.  A
+ * failed comparison produces a report meant to say *what kind* of
+ * difference it is, not only where: a diff-style view with context rows
+ * and a column ruler, a caret under every differing column, and notes
+ * such as "shifted right by 1 column", "truncated after col 12",
+ * "expected row 3 appears at row 4", and the code points of the first
+ * differing cell (so that U+00A0 versus a space is visible).
+ * See pty_region_compare(3).
+ */
+
+/** @brief A rectangle of the screen to compare, and how to report on it. */
+typedef struct {
+    int row, col;          /**< top-left cell, 0-based */
+    int rows, cols;        /**< size; 0 or less: up to the screen edge */
+    const char *label;     /**< name used in reports, e.g. "status bar"; may be NULL */
+    const char *wildcard;  /**< a character that matches any one cell, e.g. "?"; NULL: none */
+    int context;           /**< unchanged rows shown around a difference:
+                                0 = default (2), negative = none */
+} PtyRegion;
+
+/** @brief A region of @p h rows and @p w columns at (@p r, @p c). */
+#define PTY_REGION(r, c, h, w) \
+    ((PtyRegion){ .row = (r), .col = (c), .rows = (h), .cols = (w) })
+
+/** @brief The whole screen. */
+#define PTY_REGION_FULL PTY_REGION(0, 0, 0, 0)
+
+/**
+ * @brief Compares a rectangle of the screen with @p expected, cell by cell.
+ *
+ * Row i of @p expected is compared with row (region.row + i); rows past the
+ * end of the array must be blank.  Within a row every cell of the region
+ * counts: missing characters at the end of an expected row stand for
+ * blanks.  Cells outside the region are not looked at.  A wide character is
+ * written once and covers two cells.  @p reg may be NULL for the whole
+ * screen.  When @p report is not NULL it receives the report (truncated to
+ * @p report_size, always NUL-terminated); it is empty on a match.
+ * @return 0 on a match, the number of differing rows otherwise, or -1 if
+ *         the region is outside the screen or an expected row is wider or
+ *         taller than the region (the report says which).
+ */
+PTYTEST_API int pty_region_compare(PtySession *s, const PtyRegion *reg,
+                                   const char *const expected[],
+                                   char *report, size_t report_size);
+
+/**
+ * @brief Compares the whole screen with @p expected:
+ *        pty_region_compare() with the region NULL.
  */
 PTYTEST_API int pty_screen_compare(PtySession *s, const char *const expected[],
                                    char *report, size_t report_size);
+
+/** @brief One entry of a style legend: a map character and the style it
+ *         stands for.  A legend is an array ended by an entry with key 0. */
+typedef struct {
+    char key;   /**< printable ASCII character used in style maps */
+    int  attr;  /**< exact PTY_ATTR_* bitmask */
+    int  fg;    /**< exact foreground colour */
+    int  bg;    /**< exact background colour */
+} PtyStyleKey;
+
+/**
+ * @brief Compares the styles (attributes and colours) of a region with a
+ *        style map: one legend character per cell.
+ *
+ * Only the cells the map covers are checked; a map row may be shorter than
+ * the region, and rows past the end of the map are not checked.  The
+ * region's wildcard, if it is one ASCII character, matches any style.  The
+ * report shows the actual map in the same legend ('#' marks a style the
+ * legend has no key for) and spells out the first differing cell.
+ * @return 0 on a match, the number of differing rows, or -1 on a bad
+ *         region, a map larger than the region, or a map character missing
+ *         from the legend.
+ */
+PTYTEST_API int pty_region_compare_style(PtySession *s, const PtyRegion *reg,
+                                         const char *const expected[],
+                                         const PtyStyleKey legend[],
+                                         char *report, size_t report_size);
+
+/**
+ * @brief Writes the style map of a region in the given legend, rows
+ *        separated by '\n', '#' for styles without a key.  For writing the
+ *        expectation of a new test.
+ * @return @p buf, always NUL-terminated.
+ */
+PTYTEST_API char *pty_region_style_map(PtySession *s, const PtyRegion *reg,
+                                       const PtyStyleKey legend[],
+                                       char *buf, size_t size);
+
+/**
+ * @brief Describes one cell in words: its character with code points, and
+ *        its style, e.g. "'T' U+0054, bold, fg red (31), bg default".
+ * @return @p buf, always NUL-terminated.
+ */
+PTYTEST_API char *pty_cell_describe(PtySession *s, int row, int col,
+                                    char *buf, size_t size);
+
+/**
+ * @brief Writes a region as a C array literal ready to paste into a test
+ *        as its expectation (a snapshot of the current screen).
+ */
+PTYTEST_API void pty_region_dump_c(PtySession *s, const PtyRegion *reg, FILE *fp);
+
+/**
+ * @brief Writes the screen with its attributes and colours as escape
+ *        sequences, so that "cat file" in a terminal shows what the program
+ *        showed.  Rows are separated by a reset and CR LF; the last row has
+ *        no line end, so feeding the dump to a screen of the same size
+ *        reproduces it exactly (pty_feed()).
+ */
+PTYTEST_API void pty_screen_dump_ansi(PtySession *s, FILE *fp);
 
 /**
  * @brief Writes the screen to @p fp, framed and with row numbers, followed

@@ -1,0 +1,110 @@
+.TH PTY_REGION_COMPARE_STYLE 3 2026-10-03 "libptytest 0.1" "libptytest Manual"
+.SH NAME
+pty_region_compare_style, pty_region_style_map \- compare attributes and
+colours of a region against a style map
+.SH SYNOPSIS
+.nf
+.B #include <ptytest.h>
+.PP
+.B typedef struct {
+.BR "    char key;" "   /* character used in style maps */"
+.BR "    int  attr;" "  /* exact PTY_ATTR_* bitmask */"
+.BR "    int  fg;" "    /* exact foreground colour */"
+.BR "    int  bg;" "    /* exact background colour */"
+.B } PtyStyleKey;
+.PP
+.BI "int pty_region_compare_style(PtySession *" s ", const PtyRegion *" reg ,
+.BI "                             const char *const " expected "[],"
+.BI "                             const PtyStyleKey " legend "[],"
+.BI "                             char *" report ", size_t " report_size );
+.BI "char *pty_region_style_map(PtySession *" s ", const PtyRegion *" reg ,
+.BI "                           const PtyStyleKey " legend "[],"
+.BI "                           char *" buf ", size_t " size );
+.fi
+.SH DESCRIPTION
+Text tells what a screen says; style tells which line is selected, which
+field has the error, which word is the title.
+A style map states it as a picture: one ASCII character per cell, each
+standing for a style defined in a
+.IR legend ,
+an array of
+.I PtyStyleKey
+ended by an entry whose
+.I key
+is 0.
+A cell matches a key when its attributes and both colours are exactly
+those of the key (see
+.BR pty_cell_text (3)
+for the colour values).
+.PP
+.BR pty_region_compare_style ()
+compares the region
+.I reg
+(NULL: the whole screen; see
+.BR pty_region_compare (3))
+with the map
+.IR expected .
+Only the cells the map covers are checked: a map row may be shorter than
+the region and the map may have fewer rows, which lets a test state the
+style of the part that carries meaning and nothing else.
+If the region's
+.I wildcard
+is a single ASCII character, it matches any style.
+.PP
+The report has the same shape as a text comparison's: a header, the
+legend spelled out in words, a ruler, the expected (\(oq\-\(cq) and the
+actual (\(oq+\(cq) map of each differing row, carets, and the row's text
+under its maps so it is clear which word is styled wrongly.
+In the actual map a style without a key is shown as \(oq#\(cq.
+Notes name the differing columns, a styling shifted left or right by up to
+three columns (the commonest highlight bug), and the first differing cell
+with its character and both styles in words.
+.PP
+.BR pty_region_style_map ()
+writes the actual map of a region in a legend, rows separated by newlines
+\(em the starting point for a new expectation.
+.SH RETURN VALUE
+.BR pty_region_compare_style ()
+returns 0 on a match, otherwise the number of differing rows, and \-1 if
+the region is outside the screen, the map is larger than the region, a
+map character is not in the legend, or an argument is NULL.
+.BR pty_region_style_map ()
+returns
+.IR buf ,
+empty for an invalid region.
+.SH EXAMPLE
+.EX
+static const PtyStyleKey legend[] = {
+    { \(aq.\(aq, PTY_ATTR_NONE,    PTY_FG_DEFAULT, PTY_BG_DEFAULT },
+    { \(aqT\(aq, PTY_ATTR_BOLD,    PTY_FG_DEFAULT, PTY_BG_BLUE },
+    { \(aqR\(aq, PTY_ATTR_REVERSE, PTY_FG_DEFAULT, PTY_BG_DEFAULT },
+    { 0, 0, 0, 0 }
+};
+const char *const style[] = {
+    ".TTTTTTTTTT.",
+    ".RRRRRRRRRR.",
+    NULL
+};
+ASSERT_REGION_STYLE(s, PTY_REGION(2, 2, 2, 12), style, legend);
+.EE
+.PP
+A failure reads:
+.PP
+.EX
+region "menu" rows 1\-1, cols 0\-11: style differs in 1 of 1 row
+  (\- expected map, + actual map, ^ differing column, # style not in the legend)
+  legend: .=plain; R=reverse
+        0\-\-\-\-+\-\-\-\-1\-
+\-    1 |.RRRRRR.|
++    1 |RRRRRR......|
+        ^     ^
+  text | item       |
+notes:
+  row 1: cols 0, 6 differ
+    the styling is shifted left by 1 column
+    first difference at col 0 (\(aq \(aq U+0020): expected . = plain, actual R = reverse
+.EE
+.SH SEE ALSO
+.BR pty_region_compare (3),
+.BR pty_cell_text (3),
+.BR pty_assert (3)

@@ -36,16 +36,38 @@ static void test_menu(void) {
         NULL
     };
     ASSERT_SCREEN_EQ(s, first);
-    ASSERT_CELL_ATTR_EQ(s, 0, 1, PTY_ATTR_BOLD);
-    ASSERT_CELL_ATTR_EQ(s, 2, 1, PTY_ATTR_REVERSE);
-    ASSERT_CELL_ATTR_EQ(s, 2, 8, PTY_ATTR_REVERSE);   /* padded selection */
-    ASSERT_CELL_ATTR_EQ(s, 3, 1, PTY_ATTR_NONE);
+
+    /* Styles as a picture too: one legend character per cell. */
+    static const PtyStyleKey legend[] = {
+        { '.', PTY_ATTR_NONE,    PTY_FG_DEFAULT, PTY_BG_DEFAULT },
+        { 'B', PTY_ATTR_BOLD,    PTY_FG_DEFAULT, PTY_BG_DEFAULT },
+        { 'R', PTY_ATTR_REVERSE, PTY_FG_DEFAULT, PTY_BG_DEFAULT },
+        { 'd', PTY_ATTR_DIM,     PTY_FG_DEFAULT, PTY_BG_DEFAULT },
+        { 0, 0, 0, 0 }
+    };
+    const char *const first_style[] = {
+        "BBBBBBBBBBB.",
+        "",
+        ".RRRRRRRR...",
+        "............",
+        "............",
+        "",
+        "ddddddddddddddddd.",
+        NULL
+    };
+    ASSERT_REGION_STYLE(s, PTY_REGION_FULL, first_style, legend);
 
     /* The menu enabled application cursor mode; pty_send_key follows it. */
     pty_send_key(s, PTY_KEY_DOWN);
     ASSERT_WAIT_FOR(s, "> Save", 3000);
-    ASSERT_CELL_ATTR_EQ(s, 2, 1, PTY_ATTR_NONE);
-    ASSERT_CELL_ATTR_EQ(s, 3, 1, PTY_ATTR_REVERSE);
+
+    /* Only the list matters now: a region, with a label for the report. */
+    PtyRegion list = PTY_REGION(2, 0, 3, 12);
+    list.label = "menu items";
+    const char *const second[] = { "   Open", " > Save", "   Quit", NULL };
+    ASSERT_REGION_EQ(s, list, second);
+    const char *const second_style[] = { "............", ".RRRRRRRR...", NULL };
+    ASSERT_REGION_STYLE(s, list, second_style, legend);
 
     pty_send_key(s, PTY_KEY_ENTER);
     /* Exit status first, then what it left on the main screen. */
@@ -64,7 +86,7 @@ int main(int argc, char **argv) {
     test_menu();
     printf("%d assertions, %d failed\n", g_tests_run, g_tests_failed);
     /* A floor: an early return must not look like a pass. */
-    if (g_tests_run < 14) {
+    if (g_tests_run < 11) {
         printf("FAIL: only %d assertions ran\n", g_tests_run);
         return 1;
     }

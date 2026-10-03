@@ -20,7 +20,7 @@ They are listed under
 below, and every sequence listed there as understood has a unit test that
 fails if it is mis-handled.
 .SH ARCHITECTURE
-The library has three layers, one source file each, under one public
+The library has four parts, one source file each, under one public
 header,
 .IR ptytest.h :
 .TP
@@ -44,8 +44,12 @@ termination
 .RB ( pty_close (3))
 and every read-only question about the screen
 .RB ( pty_cell_text (3),
-.BR pty_row_text (3),
-.BR pty_screen_compare (3)).
+.BR pty_row_text (3)).
+.TP
+.B Comparison (pty_compare.c)
+Compares a region of the screen with an expected picture of text or of
+styles, and writes the report that explains a difference.
+It only reads the screen.
 .TP
 .B Synchronisation (pty_sync.c)
 Reads the master side of the PTY and feeds the bytes to the emulator.
@@ -105,14 +109,18 @@ if the program draws in several writes.
 .IP 3. 4
 Compare every view at least once as a whole with
 .BR pty_screen_compare (3)
-.RB ( ASSERT_SCREEN_EQ ).
+.RB ( ASSERT_SCREEN_EQ ),
+and the parts that change between steps as regions with
+.BR pty_region_compare (3)
+.RB ( ASSERT_REGION_EQ ),
+labelled so the report names them, with a wildcard for what the test
+cannot know (a clock, a size).
 "The text appears somewhere" checks content, not layout: a column shifted by
 one, a misplaced border and a truncated line all pass it.
-Check attributes and colours of the cells that carry meaning with
-.BR pty_cell_attr (3),
-.BR pty_cell_fg (3)
-and
-.BR pty_cell_bg (3).
+State the styles that carry meaning \(em the selection, the error, the
+title \(em as a style map with
+.BR pty_region_compare_style (3)
+.RB ( ASSERT_REGION_STYLE ).
 .IP 4. 4
 For a program that finishes by itself, assert its exit status with
 .BR pty_wait_exit (3)
@@ -131,6 +139,29 @@ See
 for the assertion macros, and the example under
 .I examples/
 in the source tree.
+.SH READING A FAILURE
+A failed comparison is meant to be understood from the log alone.
+Its report shows the differing rows as expected (\(oq\-\(cq) and actual
+(\(oq+\(cq) under a ruler of screen columns, with carets under every
+differing cell and unchanged rows around them; then notes that classify
+the difference \(em moved to another row, moved as a block, shifted left
+or right (the whole row or one stretch), truncated, extra text, blank,
+letter case, a different kind of blank \(em and spell out the first
+differing cell in code points and style.
+See
+.BR pty_region_compare (3)
+for an example.
+.PP
+When more is needed:
+.BR pty_screen_dump (3)
+prints the whole screen framed,
+.BR pty_screen_dump_ansi (3)
+saves it with its colours (and loads back with
+.BR pty_feed (3)),
+.BR pty_cell_describe (3)
+explains one cell, and
+.B PTYTEST_SNAPSHOT=1
+makes the assertion macros print the actual region as a C literal.
 .SH EMULATOR
 The emulator implements the subset of xterm that programs use under
 .BR TERM=xterm\-256color ,
@@ -217,6 +248,13 @@ rendering is implied.
 A program that depends on any of these shows a difference between this
 emulator and a real terminal, and a test cannot catch a fault in it.
 .SH ENVIRONMENT
+.TP
+.B PTYTEST_SNAPSHOT
+When set, a failed
+.B ASSERT_SCREEN_EQ
+or
+.B ASSERT_REGION_EQ
+also prints the actual region as a C literal.
 .TP
 .B PTYTEST_CLOSE_GRACE_MS
 Default for

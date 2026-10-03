@@ -114,6 +114,7 @@ endif()
 # reach the internal emulator interface the shared library does not export).
 # ---------------------------------------------------------------------------
 set(PTYTEST_SOURCES
+    src/pty_compare.c
     src/pty_screen.c
     src/pty_session.c
     src/pty_sync.c)
@@ -180,7 +181,8 @@ endif()
 # ---------------------------------------------------------------------------
 set(PTYTEST_MAN3_PAGES
     libptytest pty_open pty_run pty_send pty_wait_for pty_wait_exit
-    pty_feed pty_cell_text pty_row_text pty_screen_compare pty_assert)
+    pty_feed pty_cell_text pty_row_text pty_region_compare
+    pty_region_compare_style pty_screen_dump pty_assert)
 
 # alias page -> page it points to
 set(PTYTEST_MAN3_ALIASES
@@ -194,7 +196,10 @@ set(PTYTEST_MAN3_ALIASES
     pty_cell_bg:pty_cell_text pty_cursor:pty_cell_text
     pty_row_contains:pty_row_text pty_screen_contains:pty_row_text
     pty_screen_text:pty_row_text pty_screen_is_blank:pty_row_text
-    pty_screen_dump:pty_screen_compare)
+    pty_cell_describe:pty_cell_text
+    pty_screen_compare:pty_region_compare
+    pty_region_style_map:pty_region_compare_style
+    pty_screen_dump_ansi:pty_screen_dump pty_region_dump_c:pty_screen_dump)
 
 set(PTYTEST_MAN_OUT "${CMAKE_BINARY_DIR}/man")
 set(PTYTEST_MAN_GZ "")

@@ -11,6 +11,8 @@ pty_assert \- assertion macros for PTY tests
 .BI "ASSERT(" cond ", " msg );
 .BI "ASSERT_WAIT_FOR(" s ", " text ", " timeout_ms );
 .BI "ASSERT_SCREEN_EQ(" s ", " expected );
+.BI "ASSERT_REGION_EQ(" s ", " region ", " expected );
+.BI "ASSERT_REGION_STYLE(" s ", " region ", " map ", " legend );
 .BI "ASSERT_SCREEN_CONTAINS(" s ", " text );
 .BI "ASSERT_SCREEN_NOT_CONTAINS(" s ", " text );
 .BI "ASSERT_ROW_CONTAINS(" s ", " row ", " text );
@@ -44,7 +46,16 @@ and returns from the calling function, which must therefore return
 \fBpty_wait_for\fP(3) succeeds
 .TP
 .B ASSERT_SCREEN_EQ
-\fBpty_screen_compare\fP(3) finds no difference
+\fBpty_region_compare\fP(3) finds no difference
+.TP
+.B ASSERT_REGION_EQ
+\fBpty_region_compare\fP(3) finds no difference in \fIregion\fP, a
+\fIPtyRegion\fP value such as \fBPTY_REGION\fP(23, 0, 1, 0) or a
+variable carrying a label and a wildcard
+.TP
+.B ASSERT_REGION_STYLE
+\fBpty_region_compare_style\fP(3) finds the styles of \fIregion\fP as
+the style \fImap\fP says, in \fIlegend\fP
 .TP
 .B ASSERT_SCREEN_CONTAINS
 some row contains \fItext\fP
@@ -82,6 +93,18 @@ An absence assertion that passes when there is nothing to search passes
 exactly when the program crashed or never drew; wait for something that
 must be there first.
 .PP
+A failed comparison macro prints the whole report of the comparison: the
+diff view with context, and the notes that say what kind of difference it
+is (see
+.BR pty_region_compare (3)).
+The report buffer is
+.B PTY_ASSERT_REPORT_SIZE
+bytes (32768 unless defined before the include).
+With the environment variable
+.B PTYTEST_SNAPSHOT
+set, the actual region is printed as well, as a C literal to paste into
+the test once the new screen has been judged correct.
+.PP
 Failure messages go to standard output; define
 .B PTY_ASSERT_OUT
 as another
@@ -118,5 +141,5 @@ int main(void)
 .EE
 .SH SEE ALSO
 .BR libptytest (3),
-.BR pty_screen_compare (3),
+.BR pty_region_compare (3),
 .BR libptytest (7)

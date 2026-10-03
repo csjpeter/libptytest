@@ -1,0 +1,170 @@
+.TH PTY_REGION_COMPARE 3 2026-10-03 "libptytest 0.1" "libptytest Manual"
+.SH NAME
+pty_region_compare, pty_screen_compare \- compare a rectangle of the
+screen, or all of it, cell for cell, and explain the difference
+.SH SYNOPSIS
+.nf
+.B #include <ptytest.h>
+.PP
+.B typedef struct {
+.BR "    int row, col;" "           /* top-left cell, 0-based */"
+.BR "    int rows, cols;" "         /* 0 or less: to the screen edge */"
+.BR "    const char *label;" "      /* name in reports, or NULL */"
+.BR "    const char *wildcard;" "   /* matches any one cell, or NULL */"
+.BR "    int context;" "            /* 0: 2 rows; negative: none */"
+.B } PtyRegion;
+.PP
+.BI "#define PTY_REGION(" r ", " c ", " h ", " w ")"
+.B #define PTY_REGION_FULL
+.PP
+.BI "int pty_region_compare(PtySession *" s ", const PtyRegion *" reg ,
+.BI "                       const char *const " expected "[],"
+.BI "                       char *" report ", size_t " report_size );
+.BI "int pty_screen_compare(PtySession *" s ", const char *const " expected "[],"
+.BI "                       char *" report ", size_t " report_size );
+.fi
+.SH DESCRIPTION
+.BR pty_region_compare ()
+compares the rectangle
+.I reg
+of the screen with an expected picture:
+.I expected
+is a NULL-terminated array of UTF-8 strings, row
+.I i
+of it standing for screen row
+.IR reg\->row " + " i .
+Rows past the end of the array must be blank, so a stray line in the
+region is a difference.
+Cells outside the region are not looked at: a test can check a status
+bar, a dialog or a list without restating the rest of the screen.
+.I reg
+may be NULL for the whole screen, which is what
+.BR pty_screen_compare ()
+does.
+.PP
+Every cell of the region counts.
+A character missing at the end of an expected row stands for a blank, and
+trailing blanks in an expected row are ignored; leading blanks are not.
+A wide character is written once and covers two cells; a combining mark
+belongs to the character before it.
+Attributes and colours are compared separately, with
+.BR pty_region_compare_style (3).
+.PP
+.B PTY_REGION
+builds a region of
+.I h
+rows and
+.I w
+columns at row
+.IR r ,
+column
+.IR c ;
+a size of 0 extends it to the screen edge.
+The other fields can be set on a variable:
+.TP
+.I label
+names the region in the report ("status bar", "menu items").
+.TP
+.I wildcard
+is a character that matches any one cell, for content a test cannot
+know, such as a clock: with
+.I wildcard
+set to "?", the expected text "??:??" matches any time.
+.TP
+.I context
+is the number of unchanged rows shown around each difference in the
+report; 0 means the default of 2, a negative value means none.
+.SH THE REPORT
+When
+.I report
+is not NULL it receives a description of the difference, written for
+someone who did not write the test and sees it in a CI log.
+It is empty on a match, always NUL-terminated, and truncated at a
+character boundary to
+.IR report_size .
+It has three parts.
+.PP
+A header names the area, with its label and its geometry in screen
+coordinates, and how many of its rows differ.
+.PP
+A diff-style view follows: a column ruler (a digit at every tenth
+.I screen
+column, \(oq+\(cq at every fifth); each differing row twice, as
+expected (\(oq\-\(cq) and as shown (\(oq+\(cq), framed with \(oq|\(cq so
+leading and trailing blanks are visible; a line of \(oq^\(cq under every
+differing column; and the unchanged rows around them for orientation,
+\(oq...\(cq marking rows left out.
+.PP
+Notes then say, for each differing row, which columns differ, what kind
+of difference it is when one of these applies,
+.IP \(bu 2
+nothing is shown on the row, or a blank row was expected;
+.IP \(bu 2
+the expected text is on another row (up to three rows away, inside or
+outside the region), and whether all rows moved together as a block;
+.IP \(bu 2
+the whole row, or the differing stretch of it, is shifted left or right
+by up to four columns;
+.IP \(bu 2
+the text is truncated, or has extra text after the expected end;
+.IP \(bu 2
+only letter case differs;
+.IP \(bu 2
+a different kind of blank (U+00A0, U+2007, U+3000, ...) looks like a
+space;
+.PP
+and, always, the first differing cell with its code points, which is how
+a decomposed accent, a look-alike letter or a no-break space becomes
+visible.
+.PP
+An example:
+.PP
+.EX
+screen (24x8): text differs in 2 of 8 rows
+  (\- expected, + actual, ^ differing column; ruler = screen column)
+        0\-\-\-\-+\-\-\-\-1\-\-\-\-+\-\-\-\-2\-\-\-
+     0 |  ┌ Inbox ──┐           |
+\-    1 |  │>  Meeting           |
++    1 |  │> Meeting            |
+             ^^ ^^^^^
+     2 |  │  Invoice            |
+     3 |                        |
+\-    4 |status: ok  ??:??       |
++    4 |status: OK  12:03       |
+                ^^
+     5 |                        |
+notes:
+  row 1: cols 5\-6, 8\-12 differ
+    the text in cols 5\-12 is shifted left by 1 column
+    first difference at col 5: expected \(aq \(aq U+0020, actual \(aqM\(aq U+004D
+  row 4: cols 8\-9 differ
+    differs only in letter case
+    first difference at col 8: expected \(aqo\(aq U+006F, actual \(aqO\(aq U+004F
+.EE
+.SH RETURN VALUE
+0 if the region matches, otherwise the number of differing rows.
+\-1 if the region lies (partly) outside the screen, if
+.I expected
+has more rows than the region or a row wider than it, or if an argument
+is NULL; the report then says which.
+.SH ENVIRONMENT
+.TP
+.B PTYTEST_SNAPSHOT
+When set, the assertion macros of
+.BR pty_assert (3)
+also print the actual region as a C literal after a failed comparison
+(see
+.BR pty_region_dump_c (3)).
+.SH EXAMPLE
+.EX
+PtyRegion status = PTY_REGION(23, 0, 1, 0);   /* last row, full width */
+status.label = "status bar";
+status.wildcard = "?";
+const char *const expected[] = { " INBOX  3 unread        ??:??", NULL };
+ASSERT_REGION_EQ(s, status, expected);
+.EE
+.SH SEE ALSO
+.BR pty_region_compare_style (3),
+.BR pty_screen_dump (3),
+.BR pty_assert (3),
+.BR libptytest (7)

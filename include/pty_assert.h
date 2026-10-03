@@ -154,22 +154,70 @@
     } \
 } while (0)
 
+/* Size of the report buffer of the comparison macros. */
+#ifndef PTY_ASSERT_REPORT_SIZE
+#define PTY_ASSERT_REPORT_SIZE 32768
+#endif
+
+/* With PTYTEST_SNAPSHOT set in the environment, a failed comparison also
+ * prints the actual region as a C literal, ready to paste into the test
+ * once the new screen has been judged correct. */
+#define PTY_ASSERT_SNAPSHOT_(s, reg) do { \
+    if (getenv("PTYTEST_SNAPSHOT")) { \
+        fprintf(PTY_ASSERT_OUT, "  actual, as a C literal:\n"); \
+        pty_region_dump_c(s, reg, PTY_ASSERT_OUT); \
+    } \
+} while (0)
+
+/**
+ * @brief Assert that a region equals @p expected, cell for cell.
+ *
+ * @p reg is a PtyRegion value, e.g. PTY_REGION(0, 0, 1, 80) or a variable
+ * with a label and a wildcard.  See pty_region_compare(3).
+ */
+#define ASSERT_REGION_EQ(s, reg, expected) do { \
+    g_tests_run++; \
+    PtyRegion _reg = (reg); \
+    char *_rep = malloc(PTY_ASSERT_REPORT_SIZE); \
+    int _m = pty_region_compare(s, &_reg, expected, _rep, \
+                                _rep ? PTY_ASSERT_REPORT_SIZE : 0); \
+    if (_m != 0) { \
+        PTY_ASSERT_FAIL_("%s", _m < 0 ? "region comparison could not be made:" \
+                                     : "region differs from the expectation:"); \
+        fputs(_rep ? _rep : "(no memory for the report)\n", PTY_ASSERT_OUT); \
+        PTY_ASSERT_SNAPSHOT_(s, &_reg); \
+        free(_rep); \
+        return; \
+    } \
+    free(_rep); \
+} while (0)
+
 /**
  * @brief Assert that the whole screen equals @p expected, cell for cell.
  *
  * @p expected is a NULL-terminated array of row strings; rows past its end
  * must be blank.  See pty_screen_compare(3).
  */
-#define ASSERT_SCREEN_EQ(s, expected) do { \
+#define ASSERT_SCREEN_EQ(s, expected) ASSERT_REGION_EQ(s, PTY_REGION_FULL, expected)
+
+/**
+ * @brief Assert the styles of a region against a style map and legend.
+ *        See pty_region_compare_style(3).
+ */
+#define ASSERT_REGION_STYLE(s, reg, expected, legend) do { \
     g_tests_run++; \
-    char _rep[8192]; \
-    int _m = pty_screen_compare(s, expected, _rep, sizeof(_rep)); \
+    PtyRegion _reg = (reg); \
+    char *_rep = malloc(PTY_ASSERT_REPORT_SIZE); \
+    int _m = pty_region_compare_style(s, &_reg, expected, legend, _rep, \
+                                      _rep ? PTY_ASSERT_REPORT_SIZE : 0); \
     if (_m != 0) { \
-        PTY_ASSERT_FAIL_("screen differs from the expected one (%d row(s)):\n%s", \
-                         _m, _rep); \
-        pty_screen_dump(s, PTY_ASSERT_OUT); \
+        PTY_ASSERT_FAIL_("%s", _m < 0 ? "style comparison could not be made:" \
+                                     : "styles differ from the expectation:"); \
+        fputs(_rep ? _rep : "(no memory for the report)\n", PTY_ASSERT_OUT); \
+        free(_rep); \
         return; \
     } \
+    free(_rep); \
 } while (0)
 
 /** @brief Assert that pty_wait_for succeeds within the timeout. */

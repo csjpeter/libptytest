@@ -1,0 +1,51 @@
+.TH PTY_SCREEN_DUMP 3 2026-10-03 "libptytest 0.1" "libptytest Manual"
+.SH NAME
+pty_screen_dump, pty_screen_dump_ansi, pty_region_dump_c \- print the
+screen for a person, a terminal, or a test
+.SH SYNOPSIS
+.nf
+.B #include <ptytest.h>
+.PP
+.BI "void pty_screen_dump(PtySession *" s ", FILE *" fp );
+.BI "void pty_screen_dump_ansi(PtySession *" s ", FILE *" fp );
+.BI "void pty_region_dump_c(PtySession *" s ", const PtyRegion *" reg ", FILE *" fp );
+.fi
+.SH DESCRIPTION
+.BR pty_screen_dump ()
+prints the screen as text, untrimmed and framed, with row numbers, a
+column ruler and the cursor position and visibility.
+The assertion macros print it when a text search fails.
+.PP
+.BR pty_screen_dump_ansi ()
+prints the screen with its attributes and colours as escape sequences:
+.B cat
+on the file in a terminal shows the screen as the program showed it,
+which a plain dump cannot do for a selection bar or an error in red.
+Rows are separated by a reset and CR LF and the last row has no line
+end, so feeding the dump to a session of the same size with
+.BR pty_feed (3)
+reproduces the screen exactly \(em a saved failure can be loaded back
+and inspected with every function of the library.
+.PP
+.BR pty_region_dump_c ()
+prints a region
+.RI ( reg
+NULL: the whole screen) as a C array literal that can be pasted into a
+test as its expectation.
+Trailing blanks of each row and trailing blank rows are left out; quotes
+and backslashes are escaped.
+Take a snapshot only of a screen that has been checked by eye: a snapshot
+of a wrong screen makes a test that passes on the bug.
+.SH EXAMPLE
+.EX
+/* Keep the evidence of a failed run next to the build. */
+FILE *fp = fopen("build/_test/failed\-inbox.ansi", "w");
+if (fp) {
+    pty_screen_dump_ansi(s, fp);
+    fclose(fp);
+}
+.EE
+.SH SEE ALSO
+.BR pty_region_compare (3),
+.BR pty_feed (3),
+.BR pty_assert (3)

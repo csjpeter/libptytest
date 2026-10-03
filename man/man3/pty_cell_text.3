@@ -1,8 +1,8 @@
 '\" t
 .TH PTY_CELL_TEXT 3 2026-10-03 "libptytest 0.1" "libptytest Manual"
 .SH NAME
-pty_cell_text, pty_cell_attr, pty_cell_fg, pty_cell_bg, pty_cursor \-
-inspect one cell of the screen
+pty_cell_text, pty_cell_attr, pty_cell_fg, pty_cell_bg, pty_cell_describe,
+pty_cursor \- inspect one cell of the screen
 .SH SYNOPSIS
 .nf
 .B #include <ptytest.h>
@@ -11,6 +11,8 @@ inspect one cell of the screen
 .BI "int pty_cell_attr(PtySession *" s ", int " row ", int " col );
 .BI "int pty_cell_fg(PtySession *" s ", int " row ", int " col );
 .BI "int pty_cell_bg(PtySession *" s ", int " row ", int " col );
+.BI "char *pty_cell_describe(PtySession *" s ", int " row ", int " col ,
+.BI "                        char *" buf ", size_t " size );
 .BI "int pty_cursor(PtySession *" s ", int *" row ", int *" col );
 .fi
 .SH DESCRIPTION
@@ -61,6 +63,17 @@ Reverse video is an attribute: the colours are reported unswapped.
 A cell erased while a background colour was selected carries that
 background (background colour erase), as on xterm.
 .PP
+.BR pty_cell_describe ()
+writes the cell in words into
+.IR buf :
+its character with every code point, then its style, such as
+"\(aqA\(aq U+0041, bold, reverse, fg red (31), bg #0080ff" or
+"\(aq \(aq U+0020, plain"; the second column of a wide character reads
+"(right half of ...)".
+It returns
+.IR buf ,
+empty out of range.
+.PP
 .BR pty_cursor ()
 stores the cursor position in the non-NULL arguments.
 After a character is written in the last column the cursor stays there
@@ -82,6 +95,7 @@ ASSERT_CELL_BG(s, 0, 0, PTY_BG_BLUE);
 .EE
 .SH SEE ALSO
 .BR pty_row_text (3),
-.BR pty_screen_compare (3),
+.BR pty_region_compare (3),
+.BR pty_region_compare_style (3),
 .BR pty_assert (3),
 .BR libptytest (7)

@@ -35,6 +35,9 @@ build/_test/tests/test-screen <substring>   # one test
 - `src/pty_session.c` — PTY + child lifecycle, input, screen inspection.
 - `src/pty_sync.c` — reading the master, every wait (condition + deadline).
 - `src/pty_screen.c` — the terminal emulator (byte state machine, cell grid).
+- `src/pty_compare.c` — region text/style comparison and the explaining report.
+  A new kind of difference gets a note there, a unit test in
+  `tests/unit/test_inspect.c`, and a line in `pty_region_compare.3`.
 - The shared library exports only `PTYTEST_API` symbols (hidden visibility);
   unit tests link the static library to reach `pty_internal.h`.
 
