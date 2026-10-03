@@ -217,8 +217,6 @@ static void test_resize_delivers_sigwinch(void) {
 static void test_full_screen_frame(void) {
     const char *argv[] = { PTY_FIXTURE, "frame", NULL };
     PtySession *s = start(20, 8, argv);
-    ASSERT_WAIT_FOR(s, "status: ok", 3000);
-    ASSERT(pty_settle(s, 100) == 0, "settle");
 
     const char *const expected[] = {
         "",
@@ -230,7 +228,9 @@ static void test_full_screen_frame(void) {
         "status: ok",
         NULL
     };
-    ASSERT_SCREEN_EQ(s, expected);
+    /* The frame is drawn in several writes: wait for the whole picture,
+     * not for a word of it. */
+    ASSERT_WAIT_SCREEN(s, expected, 3000);
 
     /* What the text cannot show: attributes and colours, cell by cell. */
     ASSERT_CELL_ATTR_EQ(s, 2, 2, PTY_ATTR_NONE);              /* border */
@@ -282,6 +282,32 @@ static void test_full_screen_frame(void) {
 }
 
 /* ── Exit, settle and close ──────────────────────────────────────────── */
+
+static void test_wait_region_times_out_with_report(void) {
+    const char *argv[] = { PTY_FIXTURE, "frame", NULL };
+    PtySession *s = start(20, 8, argv);
+    PtyRegion status = PTY_REGION(6, 0, 1, 0);
+    status.label = "status";
+    const char *const ok[] = { "status: ok", NULL };
+    ASSERT_WAIT_REGION(s, status, ok, 3000);
+    const char *const failed[] = { "status: failed", NULL };
+    char report[4096];
+    ASSERT(pty_wait_region(s, &status, failed, 300, report, sizeof(report)) == 1,
+           "a picture that never comes: the final comparison's result");
+    ASSERT(strstr(report, "region \"status\" rows 6-6, cols 0-19") != NULL &&
+           strstr(report, "+    6 |status: ok") != NULL,
+           "with the report of the screen at the timeout");
+    static const PtyStyleKey legend[] = {
+        { '.', PTY_ATTR_NONE, PTY_FG_DEFAULT, PTY_BG_DEFAULT },
+        { 'r', PTY_ATTR_NONE, PTY_FG_RED, PTY_BG_DEFAULT },
+        { 0, 0, 0, 0 }
+    };
+    const char *const red[] = { "rrrrrrr...", NULL };
+    ASSERT_WAIT_REGION_STYLE(s, status, red, legend, 3000);
+    pty_send_str(s, "q");
+    ASSERT_EXIT_STATUS(s, 0, 3000);
+    pty_close(s);
+}
 
 static void test_wait_exit_status(void) {
     const char *argv[] = { PTY_FIXTURE, "exit", "3", NULL };
@@ -423,6 +449,7 @@ int main(int argc, char **argv) {
         TEST_CASE(test_cursor_position_report),
         TEST_CASE(test_resize_delivers_sigwinch),
         TEST_CASE(test_full_screen_frame),
+        TEST_CASE(test_wait_region_times_out_with_report),
         TEST_CASE(test_wait_exit_status),
         TEST_CASE(test_wait_exit_drains_output),
         TEST_CASE(test_wait_exit_timeout),
@@ -437,5 +464,5 @@ int main(int argc, char **argv) {
     };
     return test_run_suite("PTY session tests", tests,
                           sizeof(tests) / sizeof(tests[0]),
-                          117, 100, argc, argv);
+                          120, 100, argc, argv);
 }

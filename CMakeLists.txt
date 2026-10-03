@@ -182,7 +182,8 @@ endif()
 set(PTYTEST_MAN3_PAGES
     libptytest pty_open pty_run pty_send pty_wait_for pty_wait_exit
     pty_feed pty_cell_text pty_row_text pty_region_compare
-    pty_region_compare_style pty_screen_dump pty_assert)
+    pty_region_compare_style pty_screen_dump pty_wait_region pty_save_evidence
+    pty_assert)
 
 # alias page -> page it points to
 set(PTYTEST_MAN3_ALIASES
@@ -199,7 +200,8 @@ set(PTYTEST_MAN3_ALIASES
     pty_cell_describe:pty_cell_text
     pty_screen_compare:pty_region_compare
     pty_region_style_map:pty_region_compare_style
-    pty_screen_dump_ansi:pty_screen_dump pty_region_dump_c:pty_screen_dump)
+    pty_screen_dump_ansi:pty_screen_dump pty_region_dump_c:pty_screen_dump
+    pty_wait_region_style:pty_wait_region)
 
 set(PTYTEST_MAN_OUT "${CMAKE_BINARY_DIR}/man")
 set(PTYTEST_MAN_GZ "")

@@ -44,6 +44,8 @@ l l.
 .TS
 l l.
 \fBpty_wait_for\fP(3)	until text is on the screen
+\fBpty_wait_region\fP(3)	until a region shows an exact picture
+\fBpty_wait_region_style\fP(3)	until a region shows the styles
 \fBpty_wait_until\fP(3)	until a predicate holds
 \fBpty_settle\fP(3)	until output pauses
 \fBpty_wait_exit\fP(3)	until the child exits; its status
@@ -76,6 +78,7 @@ l l.
 \fBpty_screen_dump\fP(3)	print the screen, framed
 \fBpty_screen_dump_ansi\fP(3)	print it with its colours
 \fBpty_region_dump_c\fP(3)	print a region as a C literal
+\fBpty_save_evidence\fP(3)	keep a failure's evidence in files
 .TE
 .SS Assertions
 .BR pty_assert (3)

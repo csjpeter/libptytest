@@ -13,6 +13,9 @@ pty_assert \- assertion macros for PTY tests
 .BI "ASSERT_SCREEN_EQ(" s ", " expected );
 .BI "ASSERT_REGION_EQ(" s ", " region ", " expected );
 .BI "ASSERT_REGION_STYLE(" s ", " region ", " map ", " legend );
+.BI "ASSERT_WAIT_SCREEN(" s ", " expected ", " timeout_ms );
+.BI "ASSERT_WAIT_REGION(" s ", " region ", " expected ", " timeout_ms );
+.BI "ASSERT_WAIT_REGION_STYLE(" s ", " region ", " map ", " legend ", " timeout_ms );
 .BI "ASSERT_SCREEN_CONTAINS(" s ", " text );
 .BI "ASSERT_SCREEN_NOT_CONTAINS(" s ", " text );
 .BI "ASSERT_ROW_CONTAINS(" s ", " row ", " text );
@@ -56,6 +59,13 @@ variable carrying a label and a wildcard
 .B ASSERT_REGION_STYLE
 \fBpty_region_compare_style\fP(3) finds the styles of \fIregion\fP as
 the style \fImap\fP says, in \fIlegend\fP
+.TP
+.B ASSERT_WAIT_SCREEN, ASSERT_WAIT_REGION
+\fBpty_wait_region\fP(3) sees the exact picture within the timeout;
+otherwise the report shows the screen at the deadline
+.TP
+.B ASSERT_WAIT_REGION_STYLE
+\fBpty_wait_region_style\fP(3) sees the styles within the timeout
 .TP
 .B ASSERT_SCREEN_CONTAINS
 some row contains \fItext\fP
@@ -105,6 +115,17 @@ With the environment variable
 set, the actual region is printed as well, as a C literal to paste into
 the test once the new screen has been judged correct.
 .PP
+With the environment variable
+.B PTYTEST_EVIDENCE_DIR
+set, every macro that is about a session also saves the evidence of its
+failure in that directory \(em the message and report, the screen as
+text, and the screen with its colours \(em under the name
+.IB file \- function \-L line
+(see
+.BR pty_save_evidence (3)).
+A failed cell assertion describes the cell in words
+.RB ( pty_cell_describe (3)).
+.PP
 Failure messages go to standard output; define
 .B PTY_ASSERT_OUT
 as another
@@ -142,4 +163,6 @@ int main(void)
 .SH SEE ALSO
 .BR libptytest (3),
 .BR pty_region_compare (3),
+.BR pty_wait_region (3),
+.BR pty_save_evidence (3),
 .BR libptytest (7)

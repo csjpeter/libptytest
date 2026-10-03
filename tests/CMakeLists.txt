@@ -30,6 +30,8 @@ ptytest_add_suite(test-screen  unit unit/test_screen.c  ptytest_static)
 ptytest_add_suite(test-inspect unit unit/test_inspect.c ptytest_static)
 target_include_directories(test-screen  PRIVATE "${CMAKE_SOURCE_DIR}/src")
 target_include_directories(test-inspect PRIVATE "${CMAKE_SOURCE_DIR}/src")
+target_compile_definitions(test-inspect PRIVATE
+    PTY_TEST_TMPDIR="${PTYTEST_TEST_TMPDIR}")
 
 # --- pty: real programs through a real pseudo-terminal ---------------------
 # Linked against the shared library, through the public interface only:

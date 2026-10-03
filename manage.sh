@@ -111,12 +111,24 @@ run_label() {
     local label="$1"
     shift
     build_debug_into "$BUILD_DIR_TEST"
+    # Evidence of an earlier run would be taken for this run's.
+    if [ -d "$SCRIPT_DIR/build/_test/evidence" ]; then
+        ( cd "$SCRIPT_DIR/build/_test" && rm -rf evidence )
+    fi
     # halt_on_error: a sanitiser finding fails the suite instead of being
-    # printed and forgotten.
+    # printed and forgotten.  A failed screen assertion leaves its evidence
+    # (report, screen, screen with colours) under the build tree.  The
+    # status is kept, not discarded, and returned after the hint.
+    local rc=0
+    PTYTEST_EVIDENCE_DIR="$BUILD_DIR_TEST/evidence" \
     ASAN_OPTIONS="halt_on_error=1:detect_leaks=1" \
     UBSAN_OPTIONS="halt_on_error=1:print_stacktrace=1" \
         ctest --test-dir "$BUILD_DIR_TEST" -L "^${label}\$" \
-              --output-on-failure --no-tests=error "$@"
+              --output-on-failure --no-tests=error "$@" || rc=$?
+    if [ -d "$BUILD_DIR_TEST/evidence" ]; then
+        echo "Evidence of failed assertions: $BUILD_DIR_TEST/evidence"
+    fi
+    return "$rc"
 }
 
 run_unit() { run_label unit "$@"; }

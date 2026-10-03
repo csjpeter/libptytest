@@ -1,0 +1,76 @@
+.TH PTY_WAIT_REGION 3 2026-10-03 "libptytest 0.1" "libptytest Manual"
+.SH NAME
+pty_wait_region, pty_wait_region_style \- wait for an exact picture of a
+region
+.SH SYNOPSIS
+.nf
+.B #include <ptytest.h>
+.PP
+.BI "int pty_wait_region(PtySession *" s ", const PtyRegion *" reg ,
+.BI "                    const char *const " expected "[], int " timeout_ms ,
+.BI "                    char *" report ", size_t " report_size );
+.BI "int pty_wait_region_style(PtySession *" s ", const PtyRegion *" reg ,
+.BI "                          const char *const " expected "[],"
+.BI "                          const PtyStyleKey " legend "[], int " timeout_ms ,
+.BI "                          char *" report ", size_t " report_size );
+.fi
+.SH DESCRIPTION
+.BR pty_wait_region ()
+reads the program's output until the region
+.I reg
+(NULL: the whole screen) equals
+.I expected
+exactly, as
+.BR pty_region_compare (3)
+defines it, or until
+.I timeout_ms
+milliseconds have passed or the child has closed the PTY.
+Then it compares once more, writing the report into
+.IR report .
+.PP
+It is the wait to use when
+.BR pty_wait_for (3)
+would return too early: a view drawn in several writes satisfies a wait
+for one of its words before it is complete, and a view that replaces
+another with the same words in it satisfies it before it is drawn at all.
+An exact picture is satisfied by nothing else.
+And when it is not satisfied, the report says how the screen differs at
+the deadline \(em which is the reason the wait failed, where a timed-out
+.BR pty_wait_for (3)
+can only say that the text did not come.
+.PP
+.BR pty_wait_region_style ()
+does the same for a style map, as
+.BR pty_region_compare_style (3)
+defines it.
+.PP
+An expectation that cannot match at all (a region outside the screen, a
+row wider than the region, a key missing from the legend) returns at
+once instead of waiting out the timeout.
+.SH RETURN VALUE
+0 if the region matched in time.
+Otherwise the result of the final comparison: the number of differing
+rows, or \-1 for an invalid region or expectation (also for a NULL
+.I legend
+in
+.BR pty_wait_region_style ()).
+.SH EXAMPLE
+.EX
+pty_send_key(s, PTY_KEY_ENTER);
+
+PtyRegion dialog = PTY_REGION(8, 20, 5, 40);
+dialog.label = "confirm dialog";
+const char *const expected[] = {
+    "┌ Delete 3 messages? ──────────────────┐",
+    "│                                      │",
+    "│        [ Yes ]        [ No ]         │",
+    "│                                      │",
+    "└──────────────────────────────────────┘",
+    NULL
+};
+ASSERT_WAIT_REGION(s, dialog, expected, 3000);
+.EE
+.SH SEE ALSO
+.BR pty_region_compare (3),
+.BR pty_wait_for (3),
+.BR pty_assert (3)

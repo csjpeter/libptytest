@@ -31,6 +31,13 @@ The public API is a superset of the original: existing tests compile unchanged
   differing cell.
 - **Style maps**: `pty_region_compare_style()` / `ASSERT_REGION_STYLE` check
   attributes and colours as a picture, one legend character per cell.
+- **Waiting for an exact picture**: `pty_wait_region()` /
+  `ASSERT_WAIT_SCREEN` / `ASSERT_WAIT_REGION` wait until a region shows the
+  expected picture — a half-drawn view or the previous view cannot satisfy
+  it — and on a timeout fail with the report of the screen at the deadline.
+- **Evidence files**: with `PTYTEST_EVIDENCE_DIR` set, every failed screen
+  assertion saves its report, the screen as text and the screen with its
+  colours, named `file-function-Lline` (`pty_save_evidence()`).
 - **Evidence**: `pty_cell_describe()`, `pty_screen_dump_ansi()` (colours,
   replayable with `pty_feed()`), `pty_region_dump_c()` and
   `PTYTEST_SNAPSHOT=1` (the actual screen as a C literal).

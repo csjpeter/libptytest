@@ -101,11 +101,14 @@ and
 which override it), and start the program with
 .BR pty_run (3).
 .IP 2. 4
-Wait for something the screen must show with
-.BR pty_wait_for (3)
-before looking at it, then
-.BR pty_settle (3)
-if the program draws in several writes.
+Wait for what the screen must show before looking at it: for the exact
+picture of the view or of its changing part with
+.BR pty_wait_region (3)
+.RB ( ASSERT_WAIT_SCREEN ,
+.BR ASSERT_WAIT_REGION ),
+which a half-drawn view or the previous view cannot satisfy; or, for a
+single fact, for its text with
+.BR pty_wait_for (3).
 .IP 3. 4
 Compare every view at least once as a whole with
 .BR pty_screen_compare (3)
@@ -162,6 +165,14 @@ saves it with its colours (and loads back with
 explains one cell, and
 .B PTYTEST_SNAPSHOT=1
 makes the assertion macros print the actual region as a C literal.
+.PP
+With
+.B PTYTEST_EVIDENCE_DIR
+set, every failed assertion about a session leaves its evidence in that
+directory \(em report, screen as text, screen with colours \(em named
+after the file, function and line of the assertion
+.RB ( pty_save_evidence (3)),
+for a CI job to keep with the failed run.
 .SH EMULATOR
 The emulator implements the subset of xterm that programs use under
 .BR TERM=xterm\-256color ,
@@ -248,6 +259,10 @@ rendering is implied.
 A program that depends on any of these shows a difference between this
 emulator and a real terminal, and a test cannot catch a fault in it.
 .SH ENVIRONMENT
+.TP
+.B PTYTEST_EVIDENCE_DIR
+Directory where failed assertions save their evidence; see
+.BR pty_save_evidence (3).
 .TP
 .B PTYTEST_SNAPSHOT
 When set, a failed

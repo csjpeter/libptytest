@@ -7,6 +7,7 @@
 #include "test_helpers.h"
 #include "pty_internal.h"
 #include <errno.h>
+#include <sys/stat.h>
 
 int g_tests_run = 0;
 int g_tests_failed = 0;
@@ -353,6 +354,143 @@ static void test_style_compare(void) {
     pty_close(s);
 }
 
+/* ── Waiting for a picture (no child: the screen is already final) ──── */
+
+static void test_wait_region_without_child(void) {
+    PtySession *s = term(10, 2);
+    feed(s, "ready");
+    const char *const ok[] = { "ready", NULL };
+    char report[2048];
+    ASSERT(pty_wait_region(s, NULL, ok, 100, report, sizeof(report)) == 0,
+           "a matching screen satisfies the wait at once");
+    ASSERT(report[0] == '\0', "no report on a match");
+    const char *const never[] = { "done", NULL };
+    ASSERT(pty_wait_region(s, &PTY_REGION(0, 0, 1, 10), never, 50, report,
+                           sizeof(report)) == 1, "a screen that never matches");
+    ASSERT_HAS(report, "-    0 |done      |\n+    0 |ready     |",
+               "the report shows the screen at the timeout");
+    const char *const too_tall[] = { "a", "b", "c", NULL };
+    ASSERT(pty_wait_region(s, NULL, too_tall, 5000, NULL, 0) == -1,
+           "an impossible expectation returns at once");
+    static const PtyStyleKey plain[] = { { '.', 0, 0, 0 }, { 0, 0, 0, 0 } };
+    const char *const st[] = { ".....", NULL };
+    ASSERT(pty_wait_region_style(s, NULL, st, plain, 100, NULL, 0) == 0, "style wait");
+    const char *const bad[] = { "R", NULL };
+    ASSERT(pty_wait_region_style(s, NULL, bad, plain, 100, report, sizeof(report)) == -1,
+           "a key missing from the legend");
+    ASSERT(pty_wait_region_style(s, NULL, st, NULL, 100, report, sizeof(report)) == -1,
+           "no legend");
+    pty_close(s);
+}
+
+/* ── Evidence ────────────────────────────────────────────────────────── */
+
+static char g_evdir[512];
+
+static int read_file(const char *dir, const char *name, char *buf, size_t size) {
+    char path[1024];
+    snprintf(path, sizeof(path), "%s/%s", dir, name);
+    FILE *fp = fopen(path, "r");
+    if (!fp) return -1;
+    size_t n = fread(buf, 1, size - 1, fp);
+    buf[n] = '\0';
+    fclose(fp);
+    return 0;
+}
+
+/* Removes what an evidence test wrote: literal file names, no recursion. */
+static void remove_evidence(const char *name) {
+    static const char *const suffixes[] = { "report.txt", "screen.txt", "screen.ansi" };
+    for (size_t i = 0; i < 3; i++) {
+        char path[1024];
+        snprintf(path, sizeof(path), "%s/%s.%s", g_evdir, name, suffixes[i]);
+        unlink(path);
+    }
+}
+
+static void test_save_evidence(void) {
+    snprintf(g_evdir, sizeof(g_evdir), "%s/evidence-%d", PTY_TEST_TMPDIR, (int)getpid());
+    PtySession *s = term(8, 2);
+    feed(s, "\033[31mred\033[0m");
+    ASSERT(pty_save_evidence(s, g_evdir, "case1", "what went wrong") == 0,
+           "evidence saved, directory created");
+    char buf[1024];
+    ASSERT(read_file(g_evdir, "case1.report.txt", buf, sizeof(buf)) == 0 &&
+           strcmp(buf, "what went wrong\n") == 0, "the text, with a final newline");
+    ASSERT(read_file(g_evdir, "case1.screen.txt", buf, sizeof(buf)) == 0 &&
+           strstr(buf, "  0 |red     |") != NULL, "the framed screen");
+    ASSERT(read_file(g_evdir, "case1.screen.ansi", buf, sizeof(buf)) == 0 &&
+           strstr(buf, "\033[0;31mred") != NULL, "the screen with its colours");
+    remove_evidence("case1");
+
+    errno = 0;
+    ASSERT(pty_save_evidence(s, g_evdir, "a/b", "x") == -1 && errno == EINVAL,
+           "a name with a slash is refused");
+    char missing[600];
+    snprintf(missing, sizeof(missing), "%s/no-such-parent/sub", g_evdir);
+    errno = 0;
+    ASSERT(pty_save_evidence(s, missing, "x", "x") == -1 && errno == ENOENT,
+           "only one level is created, and the error is reported");
+    ASSERT(pty_save_evidence(NULL, g_evdir, "x", "x") == -1, "NULL session");
+    pty_close(s);
+}
+
+static PtySession *g_ev;
+static int g_region_line, g_wait_line;
+static void fail_region_with_evidence(void) {
+    const char *const expected[] = { "green", NULL };
+    g_region_line = __LINE__ + 1;
+    ASSERT_REGION_EQ(g_ev, PTY_REGION(0, 0, 1, 8), expected);
+}
+static void fail_wait_region_with_evidence(void) {
+    const char *const expected[] = { "green", NULL };
+    g_wait_line = __LINE__ + 1;
+    ASSERT_WAIT_SCREEN(g_ev, expected, 20);
+}
+
+static void test_assertion_saves_evidence(void) {
+    snprintf(g_evdir, sizeof(g_evdir), "%s/evidence-%d", PTY_TEST_TMPDIR, (int)getpid());
+    g_ev = term(8, 2);
+    feed(g_ev, "red");
+    /* The runner may have set a directory of its own: keep it for later. */
+    const char *outer = getenv("PTYTEST_EVIDENCE_DIR");
+    char *saved = outer ? strdup(outer) : NULL;
+    setenv("PTYTEST_EVIDENCE_DIR", g_evdir, 1);
+    printf("  (the [FAIL] lines below are expected)\n");
+    int failed = g_tests_failed, run = g_tests_run;
+    fail_region_with_evidence();
+    fail_wait_region_with_evidence();
+    int counted = g_tests_failed - failed == 2 && g_tests_run - run == 2;
+    g_tests_failed = failed;
+    g_tests_run = run;
+    printf("  (end of expected [FAIL] lines)\n");
+    if (saved) setenv("PTYTEST_EVIDENCE_DIR", saved, 1);
+    else unsetenv("PTYTEST_EVIDENCE_DIR");
+    free(saved);
+    ASSERT(counted, "both comparisons failed and were counted");
+
+    const char *name = "test_inspect.c-fail_region_with_evidence-L";
+    char buf[4096], file[512];
+    /* The line number is part of the name: find it from the source line. */
+    snprintf(file, sizeof(file), "%s%d.report.txt", name, g_region_line);
+    ASSERT(read_file(g_evdir, file, buf, sizeof(buf)) == 0,
+           "the macro saved its report under file-function-line");
+    ASSERT(strstr(buf, "in fail_region_with_evidence: region comparison differs") != NULL,
+           "the report file starts with where and what");
+    ASSERT(strstr(buf, "-    0 |green   |\n+    0 |red     |") != NULL,
+           "and holds the comparison report");
+    char stem[256];
+    snprintf(stem, sizeof(stem), "%s%d", name, g_region_line);
+    remove_evidence(stem);
+    snprintf(stem, sizeof(stem), "test_inspect.c-fail_wait_region_with_evidence-L%d",
+             g_wait_line);
+    snprintf(file, sizeof(file), "%s.screen.txt", stem);
+    ASSERT(read_file(g_evdir, file, buf, sizeof(buf)) == 0, "the wait saved evidence too");
+    remove_evidence(stem);
+    ASSERT(rmdir(g_evdir) == 0, "nothing else was left in the directory");
+    pty_close(g_ev);
+}
+
 /* ── Describing and snapshots ────────────────────────────────────────── */
 
 static void test_cell_describe(void) {
@@ -545,10 +683,21 @@ static void fail_cell_bg(void)               { ASSERT_CELL_BG(g_s, 0, 0, PTY_BG_
 static void fail_cursor(void)                { ASSERT_CURSOR(g_s, 1, 1); }
 static void fail_wait_for(void)              { ASSERT_WAIT_FOR(g_s, "zzz", 10); }
 static void fail_exit_status(void)           { ASSERT_EXIT_STATUS(g_s, 0, 10); }
+static void fail_wait_screen(void) {
+    const char *const expected[] = { "abd", NULL };
+    ASSERT_WAIT_SCREEN(g_s, expected, 10);
+}
+static void fail_region_style(void) {
+    static const PtyStyleKey bold[] = { { 'B', PTY_ATTR_BOLD, 0, 0 }, { 0, 0, 0, 0 } };
+    const char *const expected[] = { "B", NULL };
+    ASSERT_REGION_STYLE(g_s, PTY_REGION_FULL, expected, bold);
+}
 static void fail_screen_eq(void) {
     const char *const expected[] = { "abd", NULL };
     ASSERT_SCREEN_EQ(g_s, expected);
 }
+
+static void test_assertions_can_fail_body(void);
 
 static int must_fail(void (*fn)(void)) {
     int failed = g_tests_failed, run = g_tests_run;
@@ -560,6 +709,17 @@ static int must_fail(void (*fn)(void)) {
 }
 
 static void test_assertions_can_fail(void) {
+    /* These failures are on purpose: they must not leave evidence that a
+     * reader of the directory would take for real ones. */
+    const char *outer = getenv("PTYTEST_EVIDENCE_DIR");
+    char *saved = outer ? strdup(outer) : NULL;
+    unsetenv("PTYTEST_EVIDENCE_DIR");
+    test_assertions_can_fail_body();
+    if (saved) setenv("PTYTEST_EVIDENCE_DIR", saved, 1);
+    free(saved);
+}
+
+static void test_assertions_can_fail_body(void) {
     g_s = term(10, 2);
     printf("  (the [FAIL] lines below are expected)\n");
     ASSERT(must_fail(fail_not_contains_on_blank),
@@ -577,6 +737,8 @@ static void test_assertions_can_fail(void) {
     ASSERT(must_fail(fail_wait_for), "WAIT_FOR fails on timeout");
     ASSERT(must_fail(fail_exit_status), "EXIT_STATUS fails without a child");
     ASSERT(must_fail(fail_screen_eq), "SCREEN_EQ fails on one changed cell");
+    ASSERT(must_fail(fail_wait_screen), "WAIT_SCREEN fails on a timeout");
+    ASSERT(must_fail(fail_region_style), "REGION_STYLE fails on a wrong style");
     printf("  (end of expected [FAIL] lines)\n");
     pty_close(g_s);
 }
@@ -597,6 +759,9 @@ int main(int argc, char **argv) {
         TEST_CASE(test_report_moved_block),
         TEST_CASE(test_report_context_gap),
         TEST_CASE(test_style_compare),
+        TEST_CASE(test_wait_region_without_child),
+        TEST_CASE(test_save_evidence),
+        TEST_CASE(test_assertion_saves_evidence),
         TEST_CASE(test_cell_describe),
         TEST_CASE(test_dump_c),
         TEST_CASE(test_dump_ansi),
@@ -611,5 +776,5 @@ int main(int argc, char **argv) {
     };
     return test_run_suite("inspection unit tests", tests,
                           sizeof(tests) / sizeof(tests[0]),
-                          155, 60, argc, argv);
+                          180, 60, argc, argv);
 }

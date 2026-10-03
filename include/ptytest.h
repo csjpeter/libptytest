@@ -418,6 +418,40 @@ PTYTEST_API void pty_region_dump_c(PtySession *s, const PtyRegion *reg, FILE *fp
 PTYTEST_API void pty_screen_dump_ansi(PtySession *s, FILE *fp);
 
 /**
+ * @brief Reads output until a region equals @p expected, then compares it
+ *        once more with a report.
+ *
+ * The wait for a view that is drawn in several writes, or that replaces a
+ * view with the same words in it: unlike pty_wait_for(), it is satisfied
+ * only by the exact picture.  On a timeout the report describes how the
+ * screen differs at that moment, which says why the wait failed.
+ * @return 0 when the region matched within @p timeout_ms, otherwise what
+ *         pty_region_compare() returns for the final screen (the number of
+ *         differing rows, or -1 on a bad region or expectation).
+ */
+PTYTEST_API int pty_wait_region(PtySession *s, const PtyRegion *reg,
+                                const char *const expected[], int timeout_ms,
+                                char *report, size_t report_size);
+
+/** @brief pty_wait_region() for a style map: see pty_region_compare_style(). */
+PTYTEST_API int pty_wait_region_style(PtySession *s, const PtyRegion *reg,
+                                      const char *const expected[],
+                                      const PtyStyleKey legend[], int timeout_ms,
+                                      char *report, size_t report_size);
+
+/**
+ * @brief Saves the evidence of a failure in directory @p dir (created if it
+ *        does not exist, one level): NAME.report.txt with @p text,
+ *        NAME.screen.txt with pty_screen_dump(), and NAME.screen.ansi with
+ *        pty_screen_dump_ansi().  Existing files of the same name are
+ *        replaced.  The assertion macros call it when PTYTEST_EVIDENCE_DIR
+ *        is set.
+ * @return 0 on success, -1 with errno set.
+ */
+PTYTEST_API int pty_save_evidence(PtySession *s, const char *dir, const char *name,
+                                  const char *text);
+
+/**
  * @brief Writes the screen to @p fp, framed and with row numbers, followed
  *        by the cursor position.  For failure messages and debugging.
  */

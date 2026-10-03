@@ -20,6 +20,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+#include <sys/stat.h>
 
 /* ── A growing string buffer ─────────────────────────────────────────── */
 
@@ -875,4 +877,90 @@ void pty_screen_dump_ansi(PtySession *s, FILE *fp) {
          * without scrolling it. */
         fputs(r + 1 < s->rows ? "\033[0m\r\n" : "\033[0m", fp);
     }
+}
+
+/* ── Waiting for a picture ───────────────────────────────────────────── */
+
+typedef struct {
+    const PtyRegion   *reg;
+    const char *const *expected;
+    const PtyStyleKey *legend;   /* NULL: compare text */
+} RegionWait;
+
+static int region_matches(PtySession *s, void *ctx) {
+    RegionWait *w = ctx;
+    int r = w->legend
+        ? pty_region_compare_style(s, w->reg, w->expected, w->legend, NULL, 0)
+        : pty_region_compare(s, w->reg, w->expected, NULL, 0);
+    /* An invalid expectation will not become valid by waiting. */
+    return r <= 0;
+}
+
+int pty_wait_region(PtySession *s, const PtyRegion *reg,
+                    const char *const expected[], int timeout_ms,
+                    char *report, size_t report_size) {
+    RegionWait w = { reg, expected, NULL };
+    pty_wait_until(s, region_matches, &w, timeout_ms);
+    return pty_region_compare(s, reg, expected, report, report_size);
+}
+
+int pty_wait_region_style(PtySession *s, const PtyRegion *reg,
+                          const char *const expected[],
+                          const PtyStyleKey legend[], int timeout_ms,
+                          char *report, size_t report_size) {
+    RegionWait w = { reg, expected, legend };
+    if (!legend) {
+        if (report && report_size) report[0] = '\0';
+        return -1;
+    }
+    pty_wait_until(s, region_matches, &w, timeout_ms);
+    return pty_region_compare_style(s, reg, expected, legend, report, report_size);
+}
+
+/* ── Evidence ────────────────────────────────────────────────────────── */
+
+/* Opens DIR/NAME.SUFFIX for writing; NULL with errno set. */
+static FILE *evidence_file(const char *dir, const char *name, const char *suffix) {
+    size_t len = strlen(dir) + strlen(name) + strlen(suffix) + 3;
+    char *path = malloc(len);
+    if (!path) return NULL;
+    snprintf(path, len, "%s/%s.%s", dir, name, suffix);
+    FILE *fp = fopen(path, "w");
+    int e = errno;
+    free(path);
+    errno = e;
+    return fp;
+}
+
+/* Closes fp; -1 if anything written to it was lost. */
+static int close_checked(FILE *fp) {
+    int bad = ferror(fp);
+    if (fclose(fp) != 0) return -1;
+    if (bad) { errno = EIO; return -1; }
+    return 0;
+}
+
+int pty_save_evidence(PtySession *s, const char *dir, const char *name,
+                      const char *text) {
+    if (!s || !s->screen || !dir || !*dir || !name || !*name || strchr(name, '/')) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (mkdir(dir, 0777) != 0 && errno != EEXIST) return -1;
+
+    FILE *fp = evidence_file(dir, name, "report.txt");
+    if (!fp) return -1;
+    fputs(text ? text : "", fp);
+    if (text && *text && text[strlen(text) - 1] != '\n') fputc('\n', fp);
+    if (close_checked(fp) != 0) return -1;
+
+    fp = evidence_file(dir, name, "screen.txt");
+    if (!fp) return -1;
+    pty_screen_dump(s, fp);
+    if (close_checked(fp) != 0) return -1;
+
+    fp = evidence_file(dir, name, "screen.ansi");
+    if (!fp) return -1;
+    pty_screen_dump_ansi(s, fp);
+    return close_checked(fp);
 }

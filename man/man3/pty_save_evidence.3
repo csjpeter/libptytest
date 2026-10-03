@@ -1,0 +1,69 @@
+.TH PTY_SAVE_EVIDENCE 3 2026-10-03 "libptytest 0.1" "libptytest Manual"
+.SH NAME
+pty_save_evidence \- keep the evidence of a failed assertion in files
+.SH SYNOPSIS
+.nf
+.B #include <ptytest.h>
+.PP
+.BI "int pty_save_evidence(PtySession *" s ", const char *" dir ", const char *" name ,
+.BI "                      const char *" text );
+.fi
+.SH DESCRIPTION
+.BR pty_save_evidence ()
+writes three files into the directory
+.IR dir ,
+creating it if it does not exist (one level only; its parent must exist):
+.TP
+.IB name .report.txt
+.I text
+\(em what failed and the comparison report \(em with a final newline;
+.TP
+.IB name .screen.txt
+the screen as
+.BR pty_screen_dump (3)
+prints it: framed, with row numbers, a column ruler and the cursor;
+.TP
+.IB name .screen.ansi
+the screen with its attributes and colours, as
+.BR pty_screen_dump_ansi (3)
+writes it: \fBcat\fP shows it in a terminal, and
+.BR pty_feed (3)
+loads it back into a session of the same size for inspection.
+.PP
+Files of the same names are replaced.
+.I name
+must not contain \(oq/\(cq.
+.PP
+A log keeps what was printed; these files keep what was on the screen,
+with its colours, which is what a CI job can attach to a failed run.
+.SH THE ASSERTION MACROS
+When the environment variable
+.B PTYTEST_EVIDENCE_DIR
+names a directory, every assertion macro of
+.BR pty_assert (3)
+that is about a session saves its evidence there when it fails, under the
+name
+.IB file \- function \-L line
+of the assertion, for example
+.IR test_inbox.c\-test_delete\-L212 ,
+and prints where it went.
+A comparison macro's report file holds the full comparison report.
+.PP
+The tests are responsible for the directory: put it under the project's
+build directory, and remove it with the build.
+.SH RETURN VALUE
+0 on success; \-1 with
+.I errno
+set if an argument is invalid
+.RB ( EINVAL ),
+the directory cannot be created, or a file cannot be written completely.
+.SH EXAMPLE
+.EX
+PTYTEST_EVIDENCE_DIR=$PWD/build/evidence ctest \-L pty
+ls build/evidence
+cat build/evidence/test_inbox.c\-test_delete\-L212.screen.ansi
+.EE
+.SH SEE ALSO
+.BR pty_assert (3),
+.BR pty_screen_dump (3),
+.BR libptytest (7)
