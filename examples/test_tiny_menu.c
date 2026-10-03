@@ -21,10 +21,9 @@ static void test_menu(void) {
     const char *argv[] = { g_menu, NULL };
     ASSERT(pty_run(s, argv) == 0, "start the menu");
 
-    /* Wait for a condition, never for a clock. */
-    ASSERT_WAIT_FOR(s, "Up/Down", 3000);
-
-    /* The whole screen, cell for cell: a shifted column fails this. */
+    /* The whole screen, cell for cell: a shifted column fails this.  Wait
+     * for the exact picture, never for a clock, and not for one word of it:
+     * a view is drawn in several writes. */
     const char *const first[] = {
         " Tiny menu",
         "",
@@ -35,7 +34,7 @@ static void test_menu(void) {
         "Up/Down, Enter, q",
         NULL
     };
-    ASSERT_SCREEN_EQ(s, first);
+    ASSERT_WAIT_SCREEN(s, first, 3000);
 
     /* Styles as a picture too: one legend character per cell. */
     static const PtyStyleKey legend[] = {
@@ -59,13 +58,14 @@ static void test_menu(void) {
 
     /* The menu enabled application cursor mode; pty_send_key follows it. */
     pty_send_key(s, PTY_KEY_DOWN);
-    ASSERT_WAIT_FOR(s, "> Save", 3000);
 
-    /* Only the list matters now: a region, with a label for the report. */
+    /* Only the list matters now: a region, with a label for the report.
+     * Waiting for "> Save" alone would return while the menu is still being
+     * redrawn, before "Quit" is back on the screen. */
     PtyRegion list = PTY_REGION(2, 0, 3, 12);
     list.label = "menu items";
     const char *const second[] = { "   Open", " > Save", "   Quit", NULL };
-    ASSERT_REGION_EQ(s, list, second);
+    ASSERT_WAIT_REGION(s, list, second, 3000);
     const char *const second_style[] = { "............", ".RRRRRRRR...", NULL };
     ASSERT_REGION_STYLE(s, list, second_style, legend);
 
@@ -86,7 +86,7 @@ int main(int argc, char **argv) {
     test_menu();
     printf("%d assertions, %d failed\n", g_tests_run, g_tests_failed);
     /* A floor: an early return must not look like a pass. */
-    if (g_tests_run < 11) {
+    if (g_tests_run < 9) {
         printf("FAIL: only %d assertions ran\n", g_tests_run);
         return 1;
     }
