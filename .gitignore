@@ -1,0 +1,6 @@
+# Build output, packages and staging trees: never committed
+# (policies/packaging-and-release-model.md, "Where the output goes").
+/build/
+*.deb
+*.rpm
+compile_commands.json

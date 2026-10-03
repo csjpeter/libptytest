@@ -1,0 +1,91 @@
+.TH PTY_SEND 3 2026-10-03 "libptytest 0.1" "libptytest Manual"
+.SH NAME
+pty_send, pty_send_str, pty_send_key \- type into the program under test
+.SH SYNOPSIS
+.nf
+.B #include <ptytest.h>
+.PP
+.BI "int pty_send(PtySession *" s ", const char *" bytes ", size_t " len );
+.BI "int pty_send_str(PtySession *" s ", const char *" str );
+.BI "int pty_send_key(PtySession *" s ", PtyKey " key );
+.PP
+.BI "#define PTY_KEY_CTRL(" c ")"
+.fi
+.SH DESCRIPTION
+These functions write to the master side of the PTY: the bytes arrive at
+the child's standard input, after the line discipline (so in canonical
+mode the tty echoes them and \fBCtrl\-C\fP raises
+.BR SIGINT ).
+.PP
+.BR pty_send ()
+writes
+.I len
+bytes.
+When the input queue is full, output is read and fed to the emulator while
+waiting for room, so a child that is itself blocked writing cannot
+deadlock the test.
+.PP
+.BR pty_send_str ()
+writes a NUL-terminated string.
+.PP
+.BR pty_send_key ()
+writes one key as xterm encodes it:
+.TP
+.B PTY_KEY_UP, _DOWN, _RIGHT, _LEFT
+CSI A..D, or SS3 A..D (see below)
+.TP
+.B PTY_KEY_HOME, PTY_KEY_END
+CSI H / CSI F, or SS3 H / SS3 F
+.TP
+.B PTY_KEY_PGUP, PTY_KEY_PGDN
+CSI 5 ~, CSI 6 ~
+.TP
+.B PTY_KEY_INSERT, PTY_KEY_DELETE
+CSI 2 ~, CSI 3 ~
+.TP
+.B PTY_KEY_SHIFT_TAB
+CSI Z
+.TP
+.B PTY_KEY_F1 .. PTY_KEY_F4
+SS3 P .. SS3 S
+.TP
+.B PTY_KEY_F5 .. PTY_KEY_F12
+CSI 15 ~ .. CSI 24 ~
+.TP
+.B PTY_KEY_ENTER
+CR (0x0d)
+.TP
+.B PTY_KEY_TAB, PTY_KEY_BACK, PTY_KEY_ESC
+0x09, 0x7f, 0x1b
+.TP
+.B PTY_KEY_CTRL_C, PTY_KEY_CTRL_D
+0x03, 0x04
+.TP
+.B PTY_KEY_CTRL(c)
+c & 0x1f
+.PP
+The cursor keys and Home/End follow the program's DECCKM mode, as a real
+terminal does: after the program sends
+.B CSI ? 1 h
+(every curses program in keypad mode does) they are sent in the SS3 form,
+which is the only form such a program recognises.
+Any other value from 0 to 255 is sent as that single byte.
+.SH RETURN VALUE
+0 when everything was written; \-1 if there is no running child, the
+arguments are invalid, the key code is unknown, writing failed, or the
+input could not be written within 5 seconds.
+.SH NOTES
+Sending is not waiting.
+After a key that changes the screen, wait for the change with
+.BR pty_wait_for (3)
+before inspecting it.
+.SH EXAMPLE
+.EX
+pty_send_str(s, "hello");
+pty_send_key(s, PTY_KEY_ENTER);
+pty_send_key(s, PTY_KEY_CTRL('x'));
+ASSERT_WAIT_FOR(s, "Saved", 3000);
+.EE
+.SH SEE ALSO
+.BR pty_wait_for (3),
+.BR libptytest (7)

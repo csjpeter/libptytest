@@ -1,0 +1,104 @@
+'\" t
+.TH LIBPTYTEST 3 2026-10-03 "libptytest 0.1" "libptytest Manual"
+.SH NAME
+libptytest \- function overview of the PTY-driven terminal test library
+.SH SYNOPSIS
+.nf
+.B #include <ptytest.h>
+.B #include <pty_assert.h>
+.PP
+Link with \fI\-lptytest\fP, or use \fIpkg\-config libptytest\fP.
+.fi
+.SH DESCRIPTION
+The library runs a terminal program inside a pseudo-terminal and turns its
+output into a grid of cells.
+The architecture, the rules for writing a test with it, and the exact list
+of terminal sequences the emulator understands are in
+.BR libptytest (7).
+.PP
+Rows and columns are numbered from 0, from the top-left corner.
+A session is single-threaded: do not use one
+.I PtySession
+from two threads at once.
+.SS Session lifecycle
+.TS
+l l.
+\fBpty_open\fP(3)	create a session with an empty screen
+\fBpty_setenv\fP(3)	set or unset a variable for the child
+\fBpty_run\fP(3)	start the program in the PTY
+\fBpty_resize\fP(3)	change the window size (SIGWINCH)
+\fBpty_signal\fP(3)	send the child a signal
+\fBpty_set_close_grace\fP(3)	let the child exit by itself on close
+\fBpty_close\fP(3)	terminate the child and free the session
+\fBpty_get_size\fP(3)	query the window size
+\fBpty_version\fP(3)	the library version
+.TE
+.SS Input
+.TS
+l l.
+\fBpty_send\fP(3)	raw bytes
+\fBpty_send_str\fP(3)	a string
+\fBpty_send_key\fP(3)	a key, as xterm encodes it
+.TE
+.SS Synchronisation
+.TS
+l l.
+\fBpty_wait_for\fP(3)	until text is on the screen
+\fBpty_wait_until\fP(3)	until a predicate holds
+\fBpty_settle\fP(3)	until output pauses
+\fBpty_wait_exit\fP(3)	until the child exits; its status
+\fBpty_drain\fP(3)	process pending output now
+\fBpty_feed\fP(3)	feed bytes to the emulator directly
+\fBpty_trace_enable\fP(3)	print every byte read
+.TE
+.SS Screen inspection
+.TS
+l l.
+\fBpty_cell_text\fP(3)	character in a cell
+\fBpty_cell_attr\fP(3)	attributes of a cell
+\fBpty_cell_fg\fP(3)	foreground colour of a cell
+\fBpty_cell_bg\fP(3)	background colour of a cell
+\fBpty_cursor\fP(3)	cursor position and visibility
+\fBpty_row_text\fP(3)	text of a row
+\fBpty_row_contains\fP(3)	substring in a row
+\fBpty_screen_contains\fP(3)	substring anywhere
+\fBpty_screen_is_blank\fP(3)	nothing on the screen
+\fBpty_screen_text\fP(3)	the whole screen as text
+\fBpty_screen_compare\fP(3)	whole-screen, cell-exact comparison
+\fBpty_screen_dump\fP(3)	print the screen, framed
+.TE
+.SS Assertions
+.BR pty_assert (3)
+describes the assertion macros of
+.IR <pty_assert.h> .
+.SH EXAMPLE
+.EX
+#include <ptytest.h>
+#include <pty_assert.h>
+
+int g_tests_run, g_tests_failed;
+
+static void test_menu(void)
+{
+    PtySession *s = pty_open(30, 8);
+    const char *argv[] = { "./tiny\-menu", NULL };
+    ASSERT(pty_run(s, argv) == 0, "start");
+    ASSERT_WAIT_FOR(s, "Up/Down", 3000);
+
+    const char *const screen[] = {
+        " Tiny menu", "", " > Open", "   Save", "   Quit",
+        "", "Up/Down, Enter, q", NULL
+    };
+    ASSERT_SCREEN_EQ(s, screen);
+    ASSERT_CELL_ATTR_EQ(s, 2, 1, PTY_ATTR_REVERSE);
+
+    pty_send_key(s, PTY_KEY_DOWN);
+    ASSERT_WAIT_FOR(s, "> Save", 3000);
+    pty_send_key(s, PTY_KEY_ENTER);
+    ASSERT_EXIT_STATUS(s, 0, 3000);
+    pty_close(s);
+}
+.EE
+.SH SEE ALSO
+.BR libptytest (7),
+.BR pty_assert (3)

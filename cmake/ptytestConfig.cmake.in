@@ -1,0 +1,12 @@
+# CMake package file for libptytest.
+#
+#   find_package(ptytest 0.1 REQUIRED)
+#   target_link_libraries(my-pty-test PRIVATE ptytest::ptytest)         # shared
+#   target_link_libraries(my-pty-test PRIVATE ptytest::ptytest_static)  # static
+#
+# See libptytest(7).
+
+@PACKAGE_INIT@
+
+include("${CMAKE_CURRENT_LIST_DIR}/ptytestTargets.cmake")
+check_required_components(ptytest)

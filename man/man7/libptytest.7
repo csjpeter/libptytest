@@ -1,0 +1,250 @@
+.TH LIBPTYTEST 7 2026-10-03 "libptytest 0.1" "libptytest Manual"
+.SH NAME
+libptytest \- architecture of the PTY-driven, cell-exact terminal test library
+.SH DESCRIPTION
+.B libptytest
+tests interactive terminal programs the way a user meets them: the real
+binary runs inside a pseudo-terminal, receives real keystrokes, and
+everything it writes is turned into a grid of cells by a built-in terminal
+emulator.
+A test then asks which character, attribute and colour sits in a given
+cell, or compares the whole screen with an expected picture.
+.PP
+The emulator is a
+.I test instrument, not a mock of the product:
+nothing of the program under test is replaced.
+It does stand in for a terminal, so its limits are limits of the tests
+written with it.
+They are listed under
+.B "EMULATOR"
+below, and every sequence listed there as understood has a unit test that
+fails if it is mis-handled.
+.SH ARCHITECTURE
+The library has three layers, one source file each, under one public
+header,
+.IR ptytest.h :
+.TP
+.B Session (pty_session.c)
+Owns the pseudo-terminal and the child process.
+.BR pty_run (3)
+calls
+.BR forkpty (3),
+sets up the child's environment and signal dispositions, and
+.BR execvp (3)s
+the program.
+A close-on-exec pipe reports a failed exec back to the parent, so a missing
+binary fails at
+.BR pty_run (3)
+instead of as a later, misleading timeout.
+This layer also implements input
+.RB ( pty_send (3)),
+window size changes
+.RB ( pty_resize (3)),
+termination
+.RB ( pty_close (3))
+and every read-only question about the screen
+.RB ( pty_cell_text (3),
+.BR pty_row_text (3),
+.BR pty_screen_compare (3)).
+.TP
+.B Synchronisation (pty_sync.c)
+Reads the master side of the PTY and feeds the bytes to the emulator.
+Every wait is a wait for a
+.I condition
+with a deadline \(em text on the screen, an arbitrary predicate, a quiet
+period, the child's exit \(em never a fixed sleep
+.RB ( pty_wait_for (3),
+.BR pty_wait_exit (3)).
+While waiting to write input, output is drained, so neither side can fill
+its buffer and block the other.
+.TP
+.B Emulator (pty_screen.c)
+A byte-driven state machine (ground, ESC, CSI, OSC and string states, plus
+a UTF-8 decoder) whose state survives between reads, so a sequence split
+across two reads of the PTY is assembled instead of dropped.
+It updates a grid of cells, each holding a UTF-8 string, an attribute
+bitmask, a foreground and a background colour, and a width.
+Queries the program sends to its terminal (cursor position, device
+attributes) are answered through the session, as a real terminal would
+answer them.
+.PP
+Data flows in one direction:
+.PP
+.EX
+  test ──pty_send()──► master ══ PTY ══ slave ──► program under test
+                                                         │
+  test ◄─pty_cell_*()── screen ◄─emulator◄─ master ◄─────┘
+                                   │
+                                   └─ answers (DSR, DA) ─► master
+.EE
+.PP
+The shared library exports only the functions declared in
+.IR ptytest.h ;
+the emulator's internal interface is reachable only from the static
+library, which is what this project's own unit tests link.
+.SH WRITING A TEST
+.IP 1. 4
+Open a session with the terminal size the view is designed for, set the
+child's environment with
+.BR pty_setenv (3)
+(at least
+.BR HOME ,
+and
+.BR XDG_CONFIG_HOME ,
+.BR XDG_DATA_HOME
+and
+.BR XDG_CACHE_HOME ,
+which override it), and start the program with
+.BR pty_run (3).
+.IP 2. 4
+Wait for something the screen must show with
+.BR pty_wait_for (3)
+before looking at it, then
+.BR pty_settle (3)
+if the program draws in several writes.
+.IP 3. 4
+Compare every view at least once as a whole with
+.BR pty_screen_compare (3)
+.RB ( ASSERT_SCREEN_EQ ).
+"The text appears somewhere" checks content, not layout: a column shifted by
+one, a misplaced border and a truncated line all pass it.
+Check attributes and colours of the cells that carry meaning with
+.BR pty_cell_attr (3),
+.BR pty_cell_fg (3)
+and
+.BR pty_cell_bg (3).
+.IP 4. 4
+For a program that finishes by itself, assert its exit status with
+.BR pty_wait_exit (3)
+before reading files it wrote.
+.BR pty_close (3)
+terminates a running child, which can cut it off mid-write.
+.IP 5. 4
+Use
+.B ASSERT_SCREEN_NOT_CONTAINS
+only on a screen that has something on it; the macro fails on a blank
+screen, because an absence assertion that passes on no output also passes
+when the program crashed.
+.PP
+See
+.BR pty_assert (3)
+for the assertion macros, and the example under
+.I examples/
+in the source tree.
+.SH EMULATOR
+The emulator implements the subset of xterm that programs use under
+.BR TERM=xterm\-256color ,
+which is what the child is given by default.
+.SS Understood
+.TP
+.B C0 controls
+BS, HT, LF, VT, FF (as LF), CR, SO, SI; CAN and SUB abort a sequence.
+.TP
+.B ESC sequences
+DECSC/DECRC (ESC 7, ESC 8), IND (ESC D), NEL (ESC E), RI (ESC M),
+HTS (ESC H), RIS (ESC c), DECALN (ESC # 8), designation of G0 and G1 as
+ASCII or DEC special graphics (ESC ( 0, ESC ( B, ESC ) 0).
+.TP
+.B Cursor movement
+CUU, CUD, CUF, CUB, CNL, CPL, CHA, HPA, HPR, VPA, VPR, CUP, HVP, CHT,
+CBT; CUU and CUD stop at the scrolling margins.
+.TP
+.B Editing
+ED 0/1/2/3, EL 0/1/2, ECH, ICH, DCH, IL, DL, SU, SD, REP; insert mode
+(IRM, SM/RM 4).
+Erased cells take the current background colour (background colour
+erase), as xterm does.
+.TP
+.B Scrolling
+DECSTBM scrolling region; LF, IND and RI scroll within it; origin mode
+(DECOM).
+.TP
+.B SGR
+0 reset; 1 bold; 2 dim; 3 italic; 4 underline (also 4:0 off and 4:n
+styles, reported as underline); 5 and 6 blink; 7 reverse; 8 invisible;
+9 strike-through; 21 double underline (reported as underline); 22, 23, 24,
+25, 27, 28, 29 resets; 30\(en37, 90\(en97 foreground; 40\(en47, 100\(en107
+background; 38 and 48 with 5;n or 2;r;g;b, in the semicolon and the colon
+forms; 39 and 49 default colours; 58 (underline colour) is parsed and
+dropped.
+.TP
+.B Modes (DECSET/DECRST)
+1 application cursor keys (which
+.BR pty_send_key (3)
+follows), 6 origin, 7 autowrap, 25 cursor visible, 47, 1047, 1048 and
+1049 alternate screen and saved cursor.
+.TP
+.B Tab stops
+Every eighth column by default; HTS, TBC 0 and 3.
+.TP
+.B Answers
+DSR 5 (status), DSR 6 (cursor position report), DA1 (as a VT220 with ANSI
+colour) and DA2.
+.TP
+.B Text
+UTF-8, with invalid and truncated sequences shown as U+FFFD.
+Character width comes from the C library's
+.BR wcwidth (3)
+in a UTF-8 locale, the function the program under test most likely uses:
+wide characters take two cells, combining marks join the preceding cell.
+Deferred wrap at the right margin behaves as on a real terminal: the
+cursor stays in the last column until the next printable character, and
+SGR does not cancel it.
+.SS Ignored
+These are consumed without effect, so they never appear as text, but they
+change nothing a test can observe:
+.IP \(bu 2
+OSC strings (window title, hyperlinks, colour queries \(em which are
+therefore not answered), DCS (including sixel graphics), SOS, PM and APC.
+.IP \(bu 2
+Mouse reporting, focus events, bracketed paste, keypad application mode
+(ESC = and ESC >), cursor style (DECSCUSR), window operations (CSI t),
+modifyOtherKeys (CSI > m) and other private-marker sequences, the kitty
+keyboard protocol, C1 controls encoded in UTF-8.
+.SS Not emulated
+.IP \(bu 2
+No scrollback: what scrolls off the top is gone.
+.IP \(bu 2
+No reflow on resize: content keeps its top-left position and is clipped.
+.IP \(bu 2
+No left/right margins (DECSLRM), double-width or double-height lines
+(DECDWL, DECDHL), or character sets other than ASCII and DEC special
+graphics.
+.IP \(bu 2
+Blinking, invisible and underline styles are attributes only; no
+rendering is implied.
+.PP
+A program that depends on any of these shows a difference between this
+emulator and a real terminal, and a test cannot catch a fault in it.
+.SH ENVIRONMENT
+.TP
+.B PTYTEST_CLOSE_GRACE_MS
+Default for
+.BR pty_set_close_grace (3):
+how long
+.BR pty_close (3)
+lets a running child exit by itself before signalling it.
+Set it when the program under test is built with coverage
+instrumentation, whose data files are written during exit and are left
+truncated by a signal arriving at that moment.
+.SH LINKING
+.EX
+cc \-o my\-test my\-test.c $(pkg\-config \-\-cflags \-\-libs libptytest)
+.EE
+.PP
+or, with CMake:
+.PP
+.EX
+find_package(ptytest 0.1 REQUIRED)
+target_link_libraries(my\-test PRIVATE ptytest::ptytest)
+.EE
+.PP
+The source tree can also be used with
+.BR add_subdirectory() ,
+which builds only the library.
+.SH SEE ALSO
+.BR libptytest (3),
+.BR pty_assert (3),
+.BR forkpty (3),
+.BR pty (7),
+.BR console_codes (4)

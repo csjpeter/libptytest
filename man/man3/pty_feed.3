@@ -1,0 +1,49 @@
+.TH PTY_FEED 3 2026-10-03 "libptytest 0.1" "libptytest Manual"
+.SH NAME
+pty_feed, pty_trace_enable \- feed the emulator directly; trace output
+.SH SYNOPSIS
+.nf
+.B #include <ptytest.h>
+.PP
+.BI "void pty_feed(PtySession *" s ", const char *" data ", size_t " len );
+.BI "void pty_trace_enable(int " on );
+.fi
+.SH DESCRIPTION
+.BR pty_feed ()
+processes
+.I len
+bytes as if the child had written them.
+It works on a session with no child at all, which makes it the tool for
+testing a renderer in-process: capture the bytes it produces (to a
+memory stream, for instance), feed them, and inspect the screen with the
+same functions and the same full-screen comparison as a PTY test.
+Sequences may be split at any byte between calls.
+If a child is running, answers to terminal queries in
+.I data
+(cursor position, device attributes) are sent to it; otherwise they are
+discarded.
+.PP
+.BR pty_trace_enable ()
+turns on (non-zero) or off the printing of every chunk read from any
+child to standard output: its size and up to 120 bytes, with ESC and
+non-printable bytes shown symbolically.
+The setting is process-wide.
+Use it while writing a test, not in a finished one.
+.SH EXAMPLE
+.EX
+char *buf; size_t len;
+FILE *fp = open_memstream(&buf, &len);
+render_status_bar(fp, &model);          /* the code under test */
+fclose(fp);
+
+PtySession *s = pty_open(40, 1);
+pty_feed(s, buf, len);
+const char *const expected[] = { " INBOX  3 unread        12:00", NULL };
+ASSERT_SCREEN_EQ(s, expected);
+ASSERT_CELL_ATTR(s, 0, 1, PTY_ATTR_BOLD);
+pty_close(s);
+free(buf);
+.EE
+.SH SEE ALSO
+.BR pty_screen_compare (3),
+.BR libptytest (7)

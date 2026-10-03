@@ -1,0 +1,12 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=${prefix}
+libdir=@CMAKE_INSTALL_FULL_LIBDIR@
+includedir=@CMAKE_INSTALL_FULL_INCLUDEDIR@
+
+Name: libptytest
+Description: PTY-driven, cell-exact test library for terminal programs
+Version: @PTYTEST_VERSION@
+URL: https://github.com/csjpeter/libptytest
+Libs: -L${libdir} -lptytest
+Libs.private: @PTYTEST_PC_LIBS_PRIVATE@
+Cflags: -I${includedir}/ptytest

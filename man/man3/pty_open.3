@@ -1,0 +1,95 @@
+.TH PTY_OPEN 3 2026-10-03 "libptytest 0.1" "libptytest Manual"
+.SH NAME
+pty_open, pty_close, pty_set_close_grace, pty_resize, pty_get_size,
+pty_version \- create, size and destroy a PTY test session
+.SH SYNOPSIS
+.nf
+.B #include <ptytest.h>
+.PP
+.BI "PtySession *pty_open(int " cols ", int " rows );
+.BI "void pty_close(PtySession *" s );
+.BI "void pty_set_close_grace(PtySession *" s ", int " ms );
+.BI "int pty_resize(PtySession *" s ", int " cols ", int " rows );
+.BI "void pty_get_size(PtySession *" s ", int *" cols ", int *" rows );
+.B "const char *pty_version(void);"
+.fi
+.SH DESCRIPTION
+.BR pty_open ()
+creates a session with a blank screen of
+.I cols
+columns and
+.I rows
+rows (each between 1 and 4096).
+No process runs yet: start one with
+.BR pty_run (3),
+or feed bytes to the emulator directly with
+.BR pty_feed (3).
+.PP
+.BR pty_close ()
+ends the session.
+A child that is still running is given the close grace period to exit by
+itself, then is sent
+.BR SIGTERM ,
+then, if it has not exited within two seconds,
+.BR SIGKILL .
+The child is always reaped.
+The master side of the PTY is closed and all memory is released.
+.I s
+may be NULL.
+.PP
+.BR pty_set_close_grace ()
+sets the grace period in milliseconds; 0 (or a negative value) means none.
+The default comes from the environment variable
+.BR PTYTEST_CLOSE_GRACE_MS ,
+read by
+.BR pty_open (),
+and is 0 when that is unset or malformed.
+A grace period is wanted when the program under test writes something on
+its way out that a signal would truncate \(em the
+.I .gcda
+files of a coverage build are the usual case.
+It costs its full length for a child that never exits by itself.
+.PP
+.BR pty_resize ()
+changes the window size.
+Pending output is processed first, at the old size; then the kernel is
+told the new size, which sends
+.B SIGWINCH
+to the child's foreground process group, and the screen is resized.
+Content keeps its top-left position and is clipped; there is no reflow.
+The scrolling region is reset and the cursor is clamped.
+Without a running child only the screen is resized.
+.PP
+.BR pty_get_size ()
+stores the current size in the non-NULL arguments (0 for a NULL session).
+.PP
+.BR pty_version ()
+returns the library version, such as "0.1.0" or, between releases,
+"0.1.0.12" (twelve commits past the tag).
+.SH RETURN VALUE
+.BR pty_open ()
+returns the session, or NULL if the size is out of range or memory is
+exhausted.
+.BR pty_resize ()
+returns 0 on success, \-1 on an invalid size or a failed
+.BR ioctl (2).
+.SH ENVIRONMENT
+.TP
+.B PTYTEST_CLOSE_GRACE_MS
+Default close grace period, in milliseconds.
+.SH EXAMPLE
+.EX
+PtySession *s = pty_open(80, 24);
+const char *argv[] = { "./my\-tui", NULL };
+if (pty_run(s, argv) != 0)
+    perror("pty_run");
+/* ... */
+pty_resize(s, 100, 30);
+ASSERT_WAIT_FOR(s, "100x30", 3000);
+pty_close(s);
+.EE
+.SH SEE ALSO
+.BR pty_run (3),
+.BR pty_wait_exit (3),
+.BR libptytest (3),
+.BR libptytest (7)

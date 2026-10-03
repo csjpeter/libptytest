@@ -1,0 +1,8 @@
+# XB-Git-Commit and XB-Build-Date carry the build's identity.  The XB- prefix
+# is Debian's own mechanism for adding a field to a binary package, so the
+# field is correct and lintian simply has no name for it.  It goes beside the
+# version rather than into it, because Version's only job is telling apt
+# which of two packages is newer.
+# See policies/packaging-and-release-model.md, "Identifying a build".
+@PACKAGE@: unknown-field XB-Git-Commit
+@PACKAGE@: unknown-field XB-Build-Date

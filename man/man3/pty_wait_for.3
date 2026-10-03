@@ -1,0 +1,80 @@
+.TH PTY_WAIT_FOR 3 2026-10-03 "libptytest 0.1" "libptytest Manual"
+.SH NAME
+pty_wait_for, pty_wait_until, pty_settle, pty_drain \- wait for the
+program under test
+.SH SYNOPSIS
+.nf
+.B #include <ptytest.h>
+.PP
+.BI "int pty_wait_for(PtySession *" s ", const char *" text ", int " timeout_ms );
+.PP
+.BI "typedef int (*PtyPredicate)(PtySession *" s ", void *" ctx );
+.BI "int pty_wait_until(PtySession *" s ", PtyPredicate " pred ", void *" ctx ,
+.BI "                   int " timeout_ms );
+.PP
+.BI "int pty_settle(PtySession *" s ", int " quiet_ms );
+.BI "int pty_drain(PtySession *" s );
+.fi
+.SH DESCRIPTION
+The screen changes only while the library reads the program's output.
+These functions read it, feed it to the emulator, and return when a
+condition holds or a deadline passes.
+None of them sleeps for a fixed time.
+.PP
+.BR pty_wait_for ()
+returns as soon as some row of the screen contains
+.IR text .
+It checks the screen first, so text that is already shown satisfies it at
+once \(em including text left over from the previous view.
+Wait for something the
+.I new
+view shows, not something both views share.
+.PP
+.BR pty_wait_until ()
+returns as soon as
+.IR pred ( s ,
+.IR ctx )
+returns non-zero; it is checked before waiting and after every read.
+.PP
+.BR pty_settle ()
+returns once no output has arrived for
+.I quiet_ms
+milliseconds.
+Use it after a
+.BR pty_wait_for ()
+when the program draws a view in several writes and the rest of the view
+has to be complete before a full-screen comparison.
+.PP
+.BR pty_drain ()
+processes whatever output is pending, without waiting for more.
+.SH RETURN VALUE
+.BR pty_wait_for ()
+and
+.BR pty_wait_until ()
+return 0 when the condition holds, \-1 on timeout, when the child closed
+the PTY without satisfying it, or for invalid arguments.
+.PP
+.BR pty_settle ()
+returns 0 when the output paused, \-1 if the child closed the PTY, if
+there is no child, or if the output did not pause within 30 seconds.
+.PP
+.BR pty_drain ()
+returns the number of bytes processed.
+.SH EXAMPLE
+.EX
+static int cursor_on_row_5(PtySession *s, void *ctx)
+{
+    int row, col;
+    (void)ctx;
+    pty_cursor(s, &row, &col);
+    return row == 5;
+}
+
+pty_send_key(s, PTY_KEY_DOWN);
+ASSERT(pty_wait_until(s, cursor_on_row_5, NULL, 3000) == 0,
+       "the cursor moved to row 5");
+.EE
+.SH SEE ALSO
+.BR pty_wait_exit (3),
+.BR pty_feed (3),
+.BR pty_assert (3)

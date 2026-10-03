@@ -1,0 +1,46 @@
+.TH PTY_WAIT_EXIT 3 2026-10-03 "libptytest 0.1" "libptytest Manual"
+.SH NAME
+pty_wait_exit \- wait for the program under test to exit by itself
+.SH SYNOPSIS
+.nf
+.B #include <ptytest.h>
+.PP
+.BI "int pty_wait_exit(PtySession *" s ", int " timeout_ms );
+.fi
+.SH DESCRIPTION
+.BR pty_wait_exit ()
+waits for the child to exit on its own, reading and processing its output
+meanwhile, so a child writing more than a PTY buffer holds cannot deadlock
+against the wait.
+Output it printed on its way out is on the screen when the call returns.
+.PP
+Use it for a program that finishes by itself \(em a one-shot command, a
+TUI after its quit key \(em before inspecting what it wrote to disk.
+.BR pty_close (3)
+terminates a running child with
+.B SIGTERM
+and then
+.BR SIGKILL ,
+which can cut it off mid-write: the last screen line saying the work is
+done is not a promise that the process has flushed its files and exited.
+.PP
+On success the child is reaped; a later
+.BR pty_close (3)
+does not signal it, and a second
+.BR pty_wait_exit ()
+returns \-1.
+.SH RETURN VALUE
+The child's exit status (0 to 255), or \-1 on timeout, when the child was
+killed by a signal, or when there is no child to wait for.
+Assert the status, not only the output: a program that prints the right
+text and exits with 1 has failed.
+.SH EXAMPLE
+.EX
+pty_send_str(s, "q");
+ASSERT_EXIT_STATUS(s, 0, 3000);         /* see pty_assert(3) */
+ASSERT_SCREEN_CONTAINS(s, "Saved 3 messages");
+.EE
+.SH SEE ALSO
+.BR pty_close (3),
+.BR pty_signal (3),
+.BR pty_assert (3)

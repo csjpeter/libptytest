@@ -1,0 +1,122 @@
+.TH PTY_ASSERT 3 2026-10-03 "libptytest 0.1" "libptytest Manual"
+.SH NAME
+pty_assert \- assertion macros for PTY tests
+.SH SYNOPSIS
+.nf
+.B #include <pty_assert.h>
+.PP
+.B int g_tests_run;
+.B int g_tests_failed;
+.PP
+.BI "ASSERT(" cond ", " msg );
+.BI "ASSERT_WAIT_FOR(" s ", " text ", " timeout_ms );
+.BI "ASSERT_SCREEN_EQ(" s ", " expected );
+.BI "ASSERT_SCREEN_CONTAINS(" s ", " text );
+.BI "ASSERT_SCREEN_NOT_CONTAINS(" s ", " text );
+.BI "ASSERT_ROW_CONTAINS(" s ", " row ", " text );
+.BI "ASSERT_CELL_TEXT(" s ", " row ", " col ", " text );
+.BI "ASSERT_CELL_ATTR(" s ", " row ", " col ", " attr );
+.BI "ASSERT_CELL_ATTR_EQ(" s ", " row ", " col ", " attrs );
+.BI "ASSERT_CELL_FG(" s ", " row ", " col ", " color );
+.BI "ASSERT_CELL_BG(" s ", " row ", " col ", " color );
+.BI "ASSERT_CURSOR(" s ", " row ", " col );
+.BI "ASSERT_EXIT_STATUS(" s ", " status ", " timeout_ms );
+.fi
+.SH DESCRIPTION
+The test program defines the two counters.
+Every macro increments
+.BR g_tests_run ;
+a failing one increments
+.BR g_tests_failed ,
+prints a line beginning with
+.B [FAIL]
+with the file, the line, what was expected
+.I and what was observed
+\(em the screen itself, framed, where the screen is the evidence \(em
+and returns from the calling function, which must therefore return
+.BR void .
+.PP
+.TP
+.B ASSERT
+\fIcond\fP is true; \fBASSERT\fP is not redefined if it exists
+.TP
+.B ASSERT_WAIT_FOR
+\fBpty_wait_for\fP(3) succeeds
+.TP
+.B ASSERT_SCREEN_EQ
+\fBpty_screen_compare\fP(3) finds no difference
+.TP
+.B ASSERT_SCREEN_CONTAINS
+some row contains \fItext\fP
+.TP
+.B ASSERT_SCREEN_NOT_CONTAINS
+the screen is not blank and no row contains \fItext\fP
+.TP
+.B ASSERT_ROW_CONTAINS
+row \fIrow\fP contains \fItext\fP
+.TP
+.B ASSERT_CELL_TEXT
+the cell shows exactly \fItext\fP
+.TP
+.B ASSERT_CELL_ATTR
+all bits of \fIattr\fP are set in the cell
+.TP
+.B ASSERT_CELL_ATTR_EQ
+the cell's attributes are exactly \fIattrs\fP
+.TP
+.B ASSERT_CELL_FG
+the cell's foreground colour is \fIcolor\fP
+.TP
+.B ASSERT_CELL_BG
+the cell's background colour is \fIcolor\fP
+.TP
+.B ASSERT_CURSOR
+the cursor is at (\fIrow\fP, \fIcol\fP)
+.TP
+.B ASSERT_EXIT_STATUS
+\fBpty_wait_exit\fP(3) returns \fIstatus\fP
+.PP
+.B ASSERT_SCREEN_NOT_CONTAINS
+fails on a blank screen.
+An absence assertion that passes when there is nothing to search passes
+exactly when the program crashed or never drew; wait for something that
+must be there first.
+.PP
+Failure messages go to standard output; define
+.B PTY_ASSERT_OUT
+as another
+.I FILE *
+expression before including the header to change that.
+.SH NOTES
+Report the counters at the end of the run and compare
+.B g_tests_run
+against a floor: a suite that stops early, or a test whose registration
+was deleted, otherwise passes with fewer assertions and nobody notices.
+Exit non-zero if any assertion failed.
+.SH EXAMPLE
+.EX
+int g_tests_run, g_tests_failed;
+
+static void test_quit(void)
+{
+    PtySession *s = pty_open(80, 24);
+    const char *argv[] = { "./my\-tui", NULL };
+    ASSERT(pty_run(s, argv) == 0, "start");
+    ASSERT_WAIT_FOR(s, "Inbox", 3000);
+    ASSERT_SCREEN_NOT_CONTAINS(s, "error");
+    pty_send_str(s, "q");
+    ASSERT_EXIT_STATUS(s, 0, 3000);
+    pty_close(s);
+}
+
+int main(void)
+{
+    test_quit();
+    printf("%d assertions, %d failed\en", g_tests_run, g_tests_failed);
+    return g_tests_failed || g_tests_run < 4;
+}
+.EE
+.SH SEE ALSO
+.BR libptytest (3),
+.BR pty_screen_compare (3),
+.BR libptytest (7)

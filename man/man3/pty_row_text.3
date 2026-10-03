@@ -1,0 +1,64 @@
+.TH PTY_ROW_TEXT 3 2026-10-03 "libptytest 0.1" "libptytest Manual"
+.SH NAME
+pty_row_text, pty_row_contains, pty_screen_contains, pty_screen_text,
+pty_screen_is_blank \- read the screen as text
+.SH SYNOPSIS
+.nf
+.B #include <ptytest.h>
+.PP
+.BI "char *pty_row_text(PtySession *" s ", int " row ", char *" buf ", size_t " size );
+.BI "int pty_row_contains(PtySession *" s ", int " row ", const char *" text );
+.BI "int pty_screen_contains(PtySession *" s ", const char *" text );
+.BI "char *pty_screen_text(PtySession *" s ", char *" buf ", size_t " size );
+.BI "int pty_screen_is_blank(PtySession *" s );
+.fi
+.SH DESCRIPTION
+.BR pty_row_text ()
+copies the text of
+.I row
+into
+.IR buf :
+every cell's character in column order (the second column of a wide
+character contributes nothing), with trailing blanks removed and leading
+blanks kept.
+The result is always NUL-terminated and is truncated at a character
+boundary if
+.I size
+is too small.
+.PP
+.BR pty_row_contains ()
+and
+.BR pty_screen_contains ()
+search one row, or each row in turn, for
+.I text
+as a substring.
+A match never spans two rows.
+.PP
+.BR pty_screen_text ()
+copies the whole screen: one line per row as
+.BR pty_row_text ()
+gives it, separated by newlines, with no newline after the last row.
+.PP
+.BR pty_screen_is_blank ()
+tells whether every cell holds a blank.
+.SH RETURN VALUE
+.BR pty_row_text ()
+and
+.BR pty_screen_text ()
+return
+.IR buf ;
+for a row out of range the string is empty.
+.BR pty_row_contains (),
+.BR pty_screen_contains ()
+and
+.BR pty_screen_is_blank ()
+return 1 or 0; a NULL session counts as blank and contains nothing.
+.SH NOTES
+"The text appears somewhere" tests content, not layout.
+Use
+.BR pty_screen_compare (3)
+for every view at least once.
+.SH SEE ALSO
+.BR pty_screen_compare (3),
+.BR pty_cell_text (3),
+.BR pty_assert (3)

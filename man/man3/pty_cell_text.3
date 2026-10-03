@@ -1,0 +1,87 @@
+'\" t
+.TH PTY_CELL_TEXT 3 2026-10-03 "libptytest 0.1" "libptytest Manual"
+.SH NAME
+pty_cell_text, pty_cell_attr, pty_cell_fg, pty_cell_bg, pty_cursor \-
+inspect one cell of the screen
+.SH SYNOPSIS
+.nf
+.B #include <ptytest.h>
+.PP
+.BI "const char *pty_cell_text(PtySession *" s ", int " row ", int " col );
+.BI "int pty_cell_attr(PtySession *" s ", int " row ", int " col );
+.BI "int pty_cell_fg(PtySession *" s ", int " row ", int " col );
+.BI "int pty_cell_bg(PtySession *" s ", int " row ", int " col );
+.BI "int pty_cursor(PtySession *" s ", int *" row ", int *" col );
+.fi
+.SH DESCRIPTION
+Rows and columns count from 0 at the top-left corner.
+.PP
+.BR pty_cell_text ()
+returns the character in the cell as a UTF-8 string.
+A blank cell is \(dq\ \(dq.
+A wide character (two columns) is reported in its first column; its second
+column returns \(dq\(dq.
+Combining marks are part of the string of the character they follow, so
+\(dqe\(dq followed by U+0301 is one cell holding both.
+The pointer is valid until the screen next changes.
+.PP
+.BR pty_cell_attr ()
+returns the attribute bitmask:
+.TS
+l l.
+PTY_ATTR_BOLD	SGR 1
+PTY_ATTR_DIM	SGR 2
+PTY_ATTR_ITALIC	SGR 3
+PTY_ATTR_UNDERLINE	SGR 4, 21, 4:n
+PTY_ATTR_BLINK	SGR 5, 6
+PTY_ATTR_REVERSE	SGR 7
+PTY_ATTR_INVISIBLE	SGR 8
+PTY_ATTR_STRIKE	SGR 9
+.TE
+.PP
+.BR pty_cell_fg ()
+and
+.BR pty_cell_bg ()
+return the colour the program selected, in the form it selected it, so a
+test can tell SGR 31 from SGR 38;5;1:
+.TS
+l l.
+0	default (PTY_FG_DEFAULT, PTY_BG_DEFAULT)
+30\(en37, 90\(en97	foreground SGR value (PTY_FG_RED: 31)
+40\(en47, 100\(en107	background SGR value (PTY_BG_BLUE: 44)
+PTY_COLOR_IDX(n)	256-colour palette entry n
+PTY_COLOR_RGB(r, g, b)	direct colour
+.TE
+.PP
+.B PTY_COLOR_IS_IDX
+and
+.B PTY_COLOR_IS_RGB
+classify a value.
+Reverse video is an attribute: the colours are reported unswapped.
+A cell erased while a background colour was selected carries that
+background (background colour erase), as on xterm.
+.PP
+.BR pty_cursor ()
+stores the cursor position in the non-NULL arguments.
+After a character is written in the last column the cursor stays there
+until the next character wraps it, as on a real terminal.
+.SH RETURN VALUE
+Out of range,
+.BR pty_cell_text ()
+returns \(dq\(dq and the other cell functions return 0.
+.BR pty_cursor ()
+returns 1 if the cursor is visible, 0 if the program hid it
+.RB ( "CSI ? 25 l" ),
+and \-1 for a NULL session.
+.SH EXAMPLE
+.EX
+ASSERT_CELL_TEXT(s, 0, 0, "┌");
+ASSERT_CELL_ATTR_EQ(s, 3, 2, PTY_ATTR_REVERSE | PTY_ATTR_BOLD);
+ASSERT_CELL_FG(s, 3, 2, PTY_COLOR_IDX(208));
+ASSERT_CELL_BG(s, 0, 0, PTY_BG_BLUE);
+.EE
+.SH SEE ALSO
+.BR pty_row_text (3),
+.BR pty_screen_compare (3),
+.BR pty_assert (3),
+.BR libptytest (7)

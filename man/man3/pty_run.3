@@ -1,0 +1,109 @@
+.TH PTY_RUN 3 2026-10-03 "libptytest 0.1" "libptytest Manual"
+.SH NAME
+pty_run, pty_setenv, pty_signal \- start and control the program under test
+.SH SYNOPSIS
+.nf
+.B #include <ptytest.h>
+.PP
+.BI "int pty_run(PtySession *" s ", const char *" argv "[]);"
+.BI "int pty_setenv(PtySession *" s ", const char *" name ", const char *" value );
+.BI "int pty_signal(PtySession *" s ", int " sig );
+.fi
+.SH DESCRIPTION
+.BR pty_run ()
+creates a pseudo-terminal of the session's size, forks, and executes
+.IR argv [0]
+(looked up in
+.BR PATH )
+with the slave side as its controlling terminal and its standard input,
+output and error.
+.I argv
+is NULL-terminated.
+A session runs at most one program.
+.PP
+The child starts with an empty signal mask and the default dispositions
+for
+.BR SIGPIPE ,
+.BR SIGINT ,
+.BR SIGTERM ,
+.B SIGCHLD
+and
+.BR SIGALRM ,
+whatever the test process has set.
+Its environment is the test process's, with these changes, in order:
+.IP 1. 4
+.B TERM=xterm\-256color
+and
+.BR LC_ALL=en_US.UTF\-8 ;
+.IP 2. 4
+.B COLUMNS
+and
+.B LINES
+removed, so the program asks the terminal for its size;
+.IP 3. 4
+every
+.BR pty_setenv ()
+of the session, in the order made.
+.PP
+.BR pty_setenv ()
+records a variable to set in the child, or, when
+.I value
+is NULL, to remove from it.
+A later call for the same name replaces the earlier one.
+It affects only a later
+.BR pty_run ();
+the test process's own environment is not changed.
+Isolate the program from the developer's files by setting at least
+.BR HOME ,
+.BR XDG_CONFIG_HOME ,
+.B XDG_DATA_HOME
+and
+.BR XDG_CACHE_HOME .
+.PP
+.BR pty_signal ()
+sends
+.I sig
+to the child.
+.SH RETURN VALUE
+.BR pty_run ()
+returns 0 once the program has been executed.
+It returns \-1 and sets
+.I errno
+if the arguments are invalid or a program already runs
+.RB ( EINVAL ),
+if the PTY or the process could not be created, or if
+.BR execvp (3)
+failed \(em in which case
+.I errno
+is the exec error, such as
+.B ENOENT
+for a missing program.
+The exec result is reported through a close-on-exec pipe, so a missing
+binary fails here rather than later as a timeout.
+.PP
+.BR pty_setenv ()
+returns 0, or \-1 for a NULL session, an empty name, a name containing
+\(oq=\(cq, or an allocation failure.
+.PP
+.BR pty_signal ()
+returns 0, or \-1 if there is no child or
+.BR kill (2)
+failed.
+.SH EXAMPLE
+.EX
+PtySession *s = pty_open(80, 24);
+pty_setenv(s, "HOME", fixture_home);
+pty_setenv(s, "XDG_CONFIG_HOME", NULL);
+pty_setenv(s, "XDG_DATA_HOME", NULL);
+pty_setenv(s, "XDG_CACHE_HOME", NULL);
+const char *argv[] = { "./my\-tui", "\-\-verbose", NULL };
+if (pty_run(s, argv) != 0) {
+    printf("cannot start ./my\-tui: %s\en", strerror(errno));
+    /* fail the test */
+}
+.EE
+.SH SEE ALSO
+.BR pty_open (3),
+.BR pty_wait_exit (3),
+.BR forkpty (3),
+.BR libptytest (7)
