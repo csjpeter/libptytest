@@ -45,9 +45,11 @@ Commands:
   clean                 Remove build/
   help                  This message
 
+Tests are declared in tests/CMakeLists.txt and built into
+build/tests/<category>/bin/<name> (here: build/_test/tests/... for test/pty).
 One suite, or one test of a suite:
-  ./manage.sh test -R test-screen
-  build/_test/tests/test-screen test_utf8      (substring filter; -l lists)
+  ./manage.sh test -R test_screen
+  build/_test/tests/unit/bin/test_screen test_utf8   (substring filter; -l lists)
 USAGE
 }
 
@@ -83,12 +85,22 @@ install_deps() {
 # release binaries and packages (policies/testing-model.md).
 # ---------------------------------------------------------------------------
 
+# check_test_bins <build-dir>: the declared tests and the files in
+# <build-dir>/tests/<category>/bin/ are the same set.
+check_test_bins() {
+    "$SCRIPT_DIR/tools/check-test-bins.sh" "$1"
+}
+
+# The Release build includes the tests: build/tests/<category>/bin/ is where
+# the integrator finds and runs them (policies/testing-model.md).  They are
+# not installed, so the packages do not change.
 build_release() {
     cmake -S "$SCRIPT_DIR" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release \
           -DCMAKE_INSTALL_PREFIX=/usr \
           -DENABLE_COVERAGE=OFF -DPTYTEST_ENABLE_ASAN=OFF \
-          -DPTYTEST_BUILD_TESTS=OFF -DPTYTEST_TEST_WRAPPER= &&
+          -DPTYTEST_BUILD_TESTS=ON -DPTYTEST_TEST_WRAPPER= &&
     cmake --build "$BUILD_DIR" --parallel "$JOBS" &&
+    check_test_bins "$BUILD_DIR" &&
     echo "Release build done: $BUILD_DIR"
 }
 
@@ -96,8 +108,9 @@ build_debug_into() {
     local dir="$1"
     cmake -S "$SCRIPT_DIR" -B "$dir" -DCMAKE_BUILD_TYPE=Debug \
           -DENABLE_COVERAGE=OFF -DPTYTEST_ENABLE_ASAN=ON \
-          -DPTYTEST_BUILD_TESTS=ON -DPTYTEST_TEST_WRAPPER=
-    cmake --build "$dir" --parallel "$JOBS"
+          -DPTYTEST_BUILD_TESTS=ON -DPTYTEST_TEST_WRAPPER= &&
+    cmake --build "$dir" --parallel "$JOBS" &&
+    check_test_bins "$dir"
 }
 
 build_debug() {
@@ -149,6 +162,7 @@ run_valgrind() {
           -DENABLE_COVERAGE=OFF -DPTYTEST_ENABLE_ASAN=OFF -DPTYTEST_BUILD_TESTS=ON \
           "-DPTYTEST_TEST_WRAPPER=valgrind;--error-exitcode=1;--leak-check=full;--errors-for-leak-kinds=definite;--track-fds=no;--quiet"
     cmake --build "$BUILD_DIR_VALGRIND" --parallel "$JOBS"
+    check_test_bins "$BUILD_DIR_VALGRIND"
     ctest --test-dir "$BUILD_DIR_VALGRIND" --output-on-failure --no-tests=error
 }
 
@@ -161,6 +175,7 @@ run_coverage() {
           -DENABLE_COVERAGE=ON -DPTYTEST_ENABLE_ASAN=OFF -DPTYTEST_BUILD_TESTS=ON \
           -DPTYTEST_TEST_WRAPPER=
     cmake --build "$BUILD_DIR_COVERAGE" --parallel "$JOBS"
+    check_test_bins "$BUILD_DIR_COVERAGE"
     lcov --zerocounters --directory "$BUILD_DIR_COVERAGE"
     # The suites' verdict counts: a failing suite fails the coverage run.
     ctest --test-dir "$BUILD_DIR_COVERAGE" --output-on-failure --no-tests=error
@@ -316,7 +331,7 @@ run_consumer() {
     echo "libs:   $libs"
     # shellcheck disable=SC2086
     cc -std=c11 -Wall -Wextra -Werror $cflags -o "$BUILD_DIR_CONSUMER/test-pc" \
-       "$SCRIPT_DIR/examples/test_tiny_menu.c" $libs
+       "$SCRIPT_DIR/tests/pty/test_tiny_menu.c" $libs
     cc -std=c11 -Wall -Wextra -Werror -o "$BUILD_DIR_CONSUMER/tiny-menu" \
        "$SCRIPT_DIR/examples/tiny_menu.c"
     LD_LIBRARY_PATH="$libdir" timeout 60 \
@@ -339,13 +354,18 @@ run_check() {
     local logdir="$BUILD_DIR/_logs"
     mkdir -p "$logdir"
 
-    local gates="unit pty valgrind coverage package consumer package-output"
+    local gates="test-bins unit pty valgrind coverage package consumer package-output"
     local -A result
     local g rc failed=0
     for g in $gates; do
         printf '%-15s ' "$g"
         rc=0
         case "$g" in
+            test-bins)
+                # The checker must be able to fail; then the real tree.
+                { "$SCRIPT_DIR/tools/check-test-bins.sh" --self-test &&
+                  build_release && check_test_bins "$BUILD_DIR"; } \
+                                     > "$logdir/$g.log" 2>&1 || rc=$? ;;
             unit)     run_unit       > "$logdir/$g.log" 2>&1 || rc=$? ;;
             pty)      run_pty        > "$logdir/$g.log" 2>&1 || rc=$? ;;
             valgrind) run_valgrind   > "$logdir/$g.log" 2>&1 || rc=$? ;;

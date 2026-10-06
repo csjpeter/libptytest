@@ -8,5 +8,5 @@ project(ptytest-consumer LANGUAGES C)
 find_package(ptytest 0.1 REQUIRED)
 
 add_executable(tiny-menu ../tiny_menu.c)
-add_executable(test-tiny-menu ../test_tiny_menu.c)
+add_executable(test-tiny-menu ../../tests/pty/test_tiny_menu.c)
 target_link_libraries(test-tiny-menu PRIVATE ptytest::ptytest)
