@@ -268,6 +268,22 @@ static void test_report_notes(void) {
                           "continues to col 7", "truncation");
     ASSERT_HAS(report, "extra text: matches up to col 1, then cols 2-4 should "
                           "be blank", "extra text");
+
+    /* Only the columns that hold the extra text are named. */
+    PtySession *gap = term(12, 1);
+    feed(gap, "ab   cd");
+    const char *const ab[] = { "ab", NULL };
+    char rep2[2048];
+    pty_screen_compare(gap, ab, rep2, sizeof(rep2));
+    pty_close(gap);
+    ASSERT_HAS(rep2, "extra text: matches up to col 1, then cols 5-6 should be blank",
+               "a gap before the extra text is not counted");
+    gap = term(12, 1);
+    feed(gap, "ab   c");
+    pty_screen_compare(gap, ab, rep2, sizeof(rep2));
+    pty_close(gap);
+    ASSERT_HAS(rep2, "extra text: matches up to col 1, then col 5 should be blank",
+               "a single extra cell is named in the singular");
     ASSERT(strstr(report, "     ...\n") == NULL, "no gap: every row is shown");
 
     PtyRegion quiet = PTY_REGION_FULL;

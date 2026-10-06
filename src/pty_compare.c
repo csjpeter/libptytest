@@ -444,8 +444,16 @@ static void text_notes(Sb *sb, PtySession *s, const Area *a, int r,
             sb_printf(sb, "    truncated: matches up to col %d, the expected text "
                           "continues to col %d\n", a->col + la, a->col + le);
         } else if (le < la && row_equal(e, act, le + 1, a->wildcard)) {
-            sb_printf(sb, "    extra text: matches up to col %d, then cols %d-%d "
-                          "should be blank\n", a->col + le, a->col + le + 1, a->col + la);
+            /* Name only the columns that hold the extra text, not the
+             * blanks between it and the expected end. */
+            int xs = le + 1;
+            while (xs < la && (cell_blank(act[xs]) || !act[xs][0])) xs++;
+            if (xs == la)
+                sb_printf(sb, "    extra text: matches up to col %d, then col %d "
+                              "should be blank\n", a->col + le, a->col + xs);
+            else
+                sb_printf(sb, "    extra text: matches up to col %d, then cols %d-%d "
+                              "should be blank\n", a->col + le, a->col + xs, a->col + la);
         } else if (hs) {
             sb_printf(sb, "    the text in cols %d-%d is shifted %s by %d column%s\n",
                       a->col + first, a->col + last, hs > 0 ? "right" : "left",
