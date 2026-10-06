@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(libptytest VERSION 0.1.0 LANGUAGES C)
+project(libptytest VERSION 0.1.1 LANGUAGES C)
 
 # ---------------------------------------------------------------------------
 # Version
@@ -423,6 +423,11 @@ set(CPACK_DEBIAN_RUNTIME_PACKAGE_SECTION "libs")
 # (CPackDeb has no per-component switch for this; the dev package has no
 # shared object, so the global one affects only the runtime package.)
 set(CPACK_DEBIAN_PACKAGE_GENERATE_SHLIBS ON)
+# What consumers inherit through shlibdeps: at least this version, never
+# exactly it.  An exact dependency makes apt remove every consumer when the
+# library is upgraded.  See policies/packaging-and-release-model.md,
+# "Dependencies only ever look upward".
+set(CPACK_DEBIAN_PACKAGE_GENERATE_SHLIBS_POLICY ">=")
 set(CPACK_DEBIAN_RUNTIME_FILE_NAME
     "${PTYTEST_PKG_RUNTIME}_${PTYTEST_VERSION}_${PTYTEST_BUILD_STAMP}_${PTYTEST_GIT_COMMIT}_${PTYTEST_DEB_ARCH}.deb")
 set(CPACK_COMPONENT_RUNTIME_DESCRIPTION

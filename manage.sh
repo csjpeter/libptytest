@@ -41,7 +41,8 @@ Commands:
   check                 Every gate, with a summary to compare against CI; includes
                         tools/check-package-output.sh, which proves the rule above
   package [deb|rpm|all] Build the packages into build/packages/ (emptied first;
-                        left empty, exit non-zero, if the build or lintian fails)
+                        left empty, exit non-zero, if the build, lintian or the
+                        upward-only dependency check fails)
   clean                 Remove build/
   help                  This message
 
@@ -262,9 +263,14 @@ do_package() {
         fi
     done
 
-    # A package that is not lintian-clean is not a result.
+    # A package that is not lintian-clean is not a result, nor is one that
+    # forbids the upgrade of what it depends on.
     if [ "$kind" != rpm ] && ! run_lintian; then
         package_failed "lintian"
+        return 1
+    fi
+    if [ "$kind" != rpm ] && ! check_depends_upward; then
+        package_failed "the dependency check"
         return 1
     fi
 
@@ -278,6 +284,50 @@ package_failed() {
     if ! empty_packages_dir; then
         echo "package: and $PACKAGE_DIR could not be emptied" >&2
     fi
+}
+
+# Every Depends, Pre-Depends, Recommends and Suggests of the built .debs
+# allows newer versions: no "(=", "(<<" or "(<=" -- except on a package this
+# same build produced (libptytest-dev on libptytest0), which is upgraded
+# together with it.  The shlibs file is held to the same rule, since every
+# consumer inherits it.  See policies/packaging-and-release-model.md,
+# "Dependencies only ever look upward".
+check_depends_upward() {
+    local deb own="" rc=0 field rel pkg
+    for deb in "$PACKAGE_DIR"/*.deb; do
+        [ -f "$deb" ] || continue
+        own="$own $(dpkg-deb -f "$deb" Package)"
+    done
+    for deb in "$PACKAGE_DIR"/*.deb; do
+        [ -f "$deb" ] || continue
+        for field in Depends Pre-Depends Recommends Suggests; do
+            # One relation per line: "name (op version)", alternatives split.
+            while IFS= read -r rel; do
+                [ -n "$rel" ] || continue
+                case "$rel" in
+                    *"(="*|*"(<<"*|*"(<="*) ;;
+                    *) continue ;;
+                esac
+                pkg="${rel%% *}"
+                case " $own " in
+                    *" $pkg "*) echo "allowed, same build: $(basename "$deb") $field: $rel" ;;
+                    *) echo "FORBIDDEN: $(basename "$deb") $field: $rel" >&2; rc=1 ;;
+                esac
+            done < <(dpkg-deb -f "$deb" "$field" | tr ',|' '\n\n' | sed 's/^ *//; s/ *$//')
+        done
+        local members shlibs
+        members="$(dpkg-deb --ctrl-tarfile "$deb" | tar -tf -)" || return 1
+        if grep -qx './shlibs' <<<"$members"; then
+            shlibs="$(dpkg-deb -I "$deb" shlibs)" || return 1
+            echo "shlibs of $(basename "$deb"): $shlibs"
+            case "$shlibs" in
+                *"(="*|*"(<<"*|*"(<="*)
+                    echo "FORBIDDEN: shlibs of $(basename "$deb") pins its consumers: $shlibs" >&2
+                    rc=1 ;;
+            esac
+        fi
+    done
+    return "$rc"
 }
 
 run_lintian() {
