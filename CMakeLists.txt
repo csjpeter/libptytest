@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(libptytest VERSION 0.1.1 LANGUAGES C)
+project(libptytest VERSION 0.1.2 LANGUAGES C)
 
 # ---------------------------------------------------------------------------
 # Version
