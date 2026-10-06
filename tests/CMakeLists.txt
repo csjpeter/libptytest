@@ -82,9 +82,12 @@ project_test_helper(pty tiny-menu "${CMAKE_SOURCE_DIR}/examples/tiny_menu.c")
 
 project_test(pty test_session   SOURCES pty/test_session.c   LIBS ptytest)
 project_test(pty test_tiny_menu SOURCES pty/test_tiny_menu.c LIBS ptytest TIMEOUT 60)
-target_compile_definitions(pty_test_session PRIVATE
-    PTY_FIXTURE="$<TARGET_FILE:pty_helper_pty-fixture>")
-add_dependencies(pty_test_session pty_helper_pty-fixture)
+project_test(pty test_render    SOURCES pty/test_render.c    LIBS ptytest)
+foreach(_t pty_test_session pty_test_render)
+    target_compile_definitions(${_t} PRIVATE
+        PTY_FIXTURE="$<TARGET_FILE:pty_helper_pty-fixture>")
+    add_dependencies(${_t} pty_helper_pty-fixture)
+endforeach()
 target_compile_definitions(pty_test_tiny_menu PRIVATE
     PTY_TINY_MENU="$<TARGET_FILE:pty_helper_tiny-menu>")
 add_dependencies(pty_test_tiny_menu pty_helper_tiny-menu)

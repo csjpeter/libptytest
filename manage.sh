@@ -20,7 +20,13 @@ BUILD_DIR_VALGRIND="$BUILD_DIR/_valgrind"
 BUILD_DIR_CONSUMER="$BUILD_DIR/_consumer"
 PACKAGE_DIR="$BUILD_DIR/packages"
 
-# Line coverage of the library sources below this fails the run.
+# Line coverage of the library sources (src/) below these fails the run.
+# The policy's floor is 80% for the unit tests alone and 80% for the
+# externally driven tests together; a project may set them higher, never
+# lower (policies/testing-model.md, "Coverage").  The figure for all tests
+# together is this project's own gate, at the policy's target.
+COVERAGE_UNIT_THRESHOLD=80
+COVERAGE_EXTERNAL_THRESHOLD=80
 COVERAGE_THRESHOLD=90
 
 JOBS="$(nproc)"
@@ -35,7 +41,8 @@ Commands:
   debug                 Debug build with ASAN + UBSan (build/_debug)
   test [ctest args]     Unit tests, ASAN + UBSan -- the command run most often
   pty [ctest args]      PTY tests: real programs through a real PTY, ASAN + UBSan
-  coverage              Line coverage of the library; fails below the threshold
+  coverage              Line coverage of src/: unit alone, pty tests alone, and
+                        all together; fails if any is below its threshold
   valgrind              Unit and PTY tests under Valgrind on a clean Release build
   consumer              Build and run the example against the built .deb packages
   test-bins             Self-test tools/check-test-bins.sh, then build and check
@@ -176,6 +183,36 @@ run_valgrind() {
     ctest --test-dir "$BUILD_DIR_VALGRIND" --output-on-failure --no-tests=error
 }
 
+# coverage_of <name> <ctest label regex>: runs only the tests of those
+# categories on zeroed counters and leaves <name>.info, product code only.
+coverage_of() {
+    local name="$1" labels="$2" info="$BUILD_DIR_COVERAGE/coverage-$1.info"
+    lcov --zerocounters --directory "$BUILD_DIR_COVERAGE"
+    # The tests' verdict counts: a failing test fails the coverage run.
+    ctest --test-dir "$BUILD_DIR_COVERAGE" -L "$labels" \
+          --output-on-failure --no-tests=error
+    lcov --capture --directory "$BUILD_DIR_COVERAGE" --output-file "$info.all"
+    # Product code only, one list for every report: the library sources.
+    lcov --extract "$info.all" "$SCRIPT_DIR/src/*" --output-file "$info"
+}
+
+# line_rate <info>: the line coverage percentage lcov reports.
+line_rate() {
+    local pct
+    pct="$(lcov --summary "$1" | awk '/lines\.*:/ { sub("%", "", $2); print $2 }')"
+    if [ -z "$pct" ]; then
+        echo "coverage: could not read the line rate of $1" >&2
+        return 1
+    fi
+    echo "$pct"
+}
+
+# coverage: two gated figures, as policies/testing-model.md "Coverage" asks,
+# each on product code (src/) only --
+#   - the unit tests alone;
+#   - the tests that drive the program from outside (functional, pty,
+#     integration; this project has pty) together;
+# and the two together, held to this project's own higher threshold.
 run_coverage() {
     if ! command -v lcov >/dev/null; then
         echo "lcov is not installed; install it with: ./manage.sh deps" >&2
@@ -186,31 +223,39 @@ run_coverage() {
           -DPTYTEST_TEST_WRAPPER=
     cmake --build "$BUILD_DIR_COVERAGE" --parallel "$JOBS"
     check_test_bins "$BUILD_DIR_COVERAGE"
-    lcov --zerocounters --directory "$BUILD_DIR_COVERAGE"
-    # The suites' verdict counts: a failing suite fails the coverage run.
-    ctest --test-dir "$BUILD_DIR_COVERAGE" --output-on-failure --no-tests=error
 
-    local info="$BUILD_DIR_COVERAGE/coverage.info"
-    lcov --capture --directory "$BUILD_DIR_COVERAGE" --output-file "$info.all"
-    # Product code only, one list for every report: the library sources.
-    lcov --extract "$info.all" "$SCRIPT_DIR/src/*" --output-file "$info"
-    lcov --list "$info"
+    coverage_of unit '^unit$'
+    coverage_of external '^(functional|pty|integration)$'
+    local dir="$BUILD_DIR_COVERAGE"
+    lcov --add-tracefile "$dir/coverage-unit.info" \
+         --add-tracefile "$dir/coverage-external.info" \
+         --output-file "$dir/coverage-all.info"
+
+    local f
+    for f in unit external all; do
+        echo "=== $f ==="
+        lcov --list "$dir/coverage-$f.info"
+    done
     if command -v genhtml >/dev/null; then
-        genhtml --quiet "$info" --output-directory "$BUILD_DIR_COVERAGE/html"
-        echo "HTML report: $BUILD_DIR_COVERAGE/html/index.html"
+        genhtml --quiet "$dir/coverage-all.info" --output-directory "$dir/html"
+        echo "HTML report: $dir/html/index.html"
     fi
 
-    local pct
-    pct="$(lcov --summary "$info" | awk '/lines\.*:/ { sub("%", "", $2); print $2 }')"
-    if [ -z "$pct" ]; then
-        echo "coverage: could not read the line rate from lcov --summary" >&2
-        return 1
-    fi
-    echo "Line coverage of src/: ${pct}% (threshold ${COVERAGE_THRESHOLD}%)"
-    if ! awk -v p="$pct" -v t="$COVERAGE_THRESHOLD" 'BEGIN { exit !(p >= t) }'; then
-        echo "coverage: ${pct}% is below the threshold of ${COVERAGE_THRESHOLD}%" >&2
-        return 1
-    fi
+    local unit ext all failed=0
+    unit="$(line_rate "$dir/coverage-unit.info")"
+    ext="$(line_rate "$dir/coverage-external.info")"
+    all="$(line_rate "$dir/coverage-all.info")"
+    report_rate() {  # report_rate <label> <pct> <threshold>
+        echo "Line coverage of src/, $1: $2% (threshold $3%)"
+        if ! awk -v p="$2" -v t="$3" 'BEGIN { exit !(p >= t) }'; then
+            echo "coverage: $1 at $2% is below the threshold of $3%" >&2
+            failed=1
+        fi
+    }
+    report_rate "unit tests alone" "$unit" "$COVERAGE_UNIT_THRESHOLD"
+    report_rate "pty tests (functional+pty+integration)" "$ext" "$COVERAGE_EXTERNAL_THRESHOLD"
+    report_rate "all tests" "$all" "$COVERAGE_THRESHOLD"
+    return "$failed"
 }
 
 # ---------------------------------------------------------------------------
