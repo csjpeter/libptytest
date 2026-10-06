@@ -25,7 +25,7 @@ human.
 ```bash
 ./manage.sh test       # unit tests (ASAN + UBSan) — run most often
 ./manage.sh pty        # PTY tests (ASAN + UBSan)
-./manage.sh check      # every gate: unit, pty, valgrind, coverage, package, lintian, consumer
+./manage.sh check      # every gate: unit, pty, valgrind, coverage, package (+lintian), consumer, package-output
 build/_test/tests/test-screen <substring>   # one test
 ```
 

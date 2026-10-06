@@ -18,6 +18,7 @@ BUILD_DIR_TEST="$BUILD_DIR/_test"
 BUILD_DIR_COVERAGE="$BUILD_DIR/_coverage"
 BUILD_DIR_VALGRIND="$BUILD_DIR/_valgrind"
 BUILD_DIR_CONSUMER="$BUILD_DIR/_consumer"
+PACKAGE_DIR="$BUILD_DIR/packages"
 
 # Line coverage of the library sources below this fails the run.
 COVERAGE_THRESHOLD=90
@@ -37,8 +38,10 @@ Commands:
   coverage              Line coverage of the library; fails below the threshold
   valgrind              Unit and PTY tests under Valgrind on a clean Release build
   consumer              Build and run the example against the built .deb packages
-  check                 Every gate, with a summary to compare against CI
-  package [deb|rpm|all] Build the packages with CPack (libptytest0, libptytest-dev)
+  check                 Every gate, with a summary to compare against CI; includes
+                        tools/check-package-output.sh, which proves the rule above
+  package [deb|rpm|all] Build the packages into build/packages/ (emptied first;
+                        left empty, exit non-zero, if the build or lintian fails)
   clean                 Remove build/
   help                  This message
 
@@ -84,8 +87,8 @@ build_release() {
     cmake -S "$SCRIPT_DIR" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release \
           -DCMAKE_INSTALL_PREFIX=/usr \
           -DENABLE_COVERAGE=OFF -DPTYTEST_ENABLE_ASAN=OFF \
-          -DPTYTEST_BUILD_TESTS=OFF -DPTYTEST_TEST_WRAPPER=
-    cmake --build "$BUILD_DIR" --parallel "$JOBS"
+          -DPTYTEST_BUILD_TESTS=OFF -DPTYTEST_TEST_WRAPPER= &&
+    cmake --build "$BUILD_DIR" --parallel "$JOBS" &&
     echo "Release build done: $BUILD_DIR"
 }
 
@@ -193,6 +196,24 @@ run_coverage() {
 # layout.  See policies/packaging-and-release-model.md.
 # ---------------------------------------------------------------------------
 
+# Removes everything in build/packages/ and recreates it empty.  Literal
+# names only: the recursive delete never takes a variable.
+empty_packages_dir() {
+    mkdir -p "$SCRIPT_DIR/build" || return 1
+    ( cd "$SCRIPT_DIR/build" && rm -rf packages && mkdir packages )
+}
+
+# package <deb|rpm|all>
+#
+# build/packages/ holds exactly the packages of this run: it is emptied
+# first, CPack writes into it (CPACK_OUTPUT_FILE_PREFIX), and every .deb has
+# to pass lintian.  On any failure the directory is left empty and the exit
+# status is non-zero, so whoever collects it never takes a partial or stale
+# set.  See policies/packaging-and-release-model.md, "Where the output goes".
+#
+# Every step is checked explicitly rather than through "set -e": a caller
+# such as run_check invokes this as "do_package ... || rc=$?", and bash
+# turns errexit off inside a function called that way.
 do_package() {
     local kind="${1:-deb}" generators
     case "$kind" in
@@ -205,36 +226,57 @@ do_package() {
             ;;
     esac
 
-    build_release
+    if ! empty_packages_dir; then
+        echo "package: cannot empty $PACKAGE_DIR" >&2
+        return 1
+    fi
 
-    # Packages of an earlier build would be mistaken for this one's.
-    find "$BUILD_DIR" -maxdepth 1 -type f \( -name '*.deb' -o -name '*.rpm' \) -delete
+    if ! build_release; then
+        package_failed "the build"
+        return 1
+    fi
 
     local g
     for g in $generators; do
         # umask 022 here, not left to the caller: CPack copies the umask of
         # whoever runs it into the directory modes of the package.  See
         # policies/packaging-and-release-model.md, "The umask leak".
-        ( umask 022; cd "$BUILD_DIR" && cpack -G "$g" --config CPackConfig.cmake )
+        if ! ( umask 022; cd "$BUILD_DIR" && cpack -G "$g" --config CPackConfig.cmake ); then
+            package_failed "cpack -G $g"
+            return 1
+        fi
     done
 
+    # A package that is not lintian-clean is not a result.
+    if [ "$kind" != rpm ] && ! run_lintian; then
+        package_failed "lintian"
+        return 1
+    fi
+
     echo
-    echo "Packages in $BUILD_DIR:"
-    find "$BUILD_DIR" -maxdepth 1 -type f \( -name '*.deb' -o -name '*.rpm' \) | sort
+    echo "Packages in $PACKAGE_DIR:"
+    find "$PACKAGE_DIR" -mindepth 1 | sort
+}
+
+package_failed() {
+    echo "package: $1 failed; $PACKAGE_DIR is left empty" >&2
+    if ! empty_packages_dir; then
+        echo "package: and $PACKAGE_DIR could not be emptied" >&2
+    fi
 }
 
 run_lintian() {
     local deb rc=0 found=0
-    for deb in "$BUILD_DIR"/*.deb; do
+    for deb in "$PACKAGE_DIR"/*.deb; do
         [ -f "$deb" ] || continue
         found=1
         echo "--- $(basename "$deb")"
         # The control fields must parse before anything else is worth checking.
-        dpkg-deb -f "$deb" Package Version Depends XB-Git-Commit XB-Build-Date
+        dpkg-deb -f "$deb" Package Version Depends XB-Git-Commit XB-Build-Date || rc=1
         lintian --fail-on error,warning --info "$deb" || rc=1
     done
     if [ "$found" -eq 0 ]; then
-        echo "lintian: no .deb in $BUILD_DIR" >&2
+        echo "lintian: no .deb in $PACKAGE_DIR" >&2
         return 1
     fi
     return "$rc"
@@ -250,13 +292,13 @@ run_consumer() {
         ( cd "$SCRIPT_DIR/build" && rm -rf _consumer )
     fi
     mkdir -p "$root"
-    for deb in "$BUILD_DIR"/*.deb; do
+    for deb in "$PACKAGE_DIR"/*.deb; do
         [ -f "$deb" ] || continue
         found=1
         dpkg-deb -x "$deb" "$root"
     done
     if [ "$found" -eq 0 ]; then
-        echo "consumer: no .deb in $BUILD_DIR; run ./manage.sh package first" >&2
+        echo "consumer: no .deb in $PACKAGE_DIR; run ./manage.sh package first" >&2
         return 1
     fi
 
@@ -297,11 +339,11 @@ run_check() {
     local logdir="$BUILD_DIR/_logs"
     mkdir -p "$logdir"
 
-    local gates="unit pty valgrind coverage package lintian consumer"
+    local gates="unit pty valgrind coverage package consumer package-output"
     local -A result
     local g rc failed=0
     for g in $gates; do
-        printf '%-10s ' "$g"
+        printf '%-15s ' "$g"
         rc=0
         case "$g" in
             unit)     run_unit       > "$logdir/$g.log" 2>&1 || rc=$? ;;
@@ -309,7 +351,9 @@ run_check() {
             valgrind) run_valgrind   > "$logdir/$g.log" 2>&1 || rc=$? ;;
             coverage) run_coverage   > "$logdir/$g.log" 2>&1 || rc=$? ;;
             package)  do_package all > "$logdir/$g.log" 2>&1 || rc=$? ;;
-            lintian)  run_lintian    > "$logdir/$g.log" 2>&1 || rc=$? ;;
+            package-output)
+                timeout 900 "$SCRIPT_DIR/tools/check-package-output.sh" \
+                                     > "$logdir/$g.log" 2>&1 || rc=$? ;;
             consumer) run_consumer   > "$logdir/$g.log" 2>&1 || rc=$? ;;
         esac
         if [ "$rc" -eq 0 ]; then
@@ -325,7 +369,7 @@ run_check() {
 
     echo
     echo "=== summary ==="
-    for g in $gates; do printf '%-10s %s\n' "$g" "${result[$g]}"; done
+    for g in $gates; do printf '%-15s %s\n' "$g" "${result[$g]}"; done
     if ! grep -h -E '^(Assertions run|Line coverage)' "$logdir/unit.log" \
              "$logdir/pty.log" "$logdir/coverage.log"; then
         echo "  (no assertion counts or coverage figure found in the logs)"
