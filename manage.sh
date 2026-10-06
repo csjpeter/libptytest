@@ -38,6 +38,8 @@ Commands:
   coverage              Line coverage of the library; fails below the threshold
   valgrind              Unit and PTY tests under Valgrind on a clean Release build
   consumer              Build and run the example against the built .deb packages
+  test-bins             Self-test tools/check-test-bins.sh, then build and check
+                        that declared tests and build/tests/*/bin/ agree
   check                 Every gate, with a summary to compare against CI; includes
                         tools/check-package-output.sh, which proves the rule above
   package [deb|rpm|all] Build the packages into build/packages/ (emptied first;
@@ -85,6 +87,13 @@ install_deps() {
 # instrumentation is sticky in a CMake cache and would otherwise leak into
 # release binaries and packages (policies/testing-model.md).
 # ---------------------------------------------------------------------------
+
+# test-bins: the checker must be able to fail (its self-test), then the
+# Release tree is built and checked.
+run_test_bins() {
+    "$SCRIPT_DIR/tools/check-test-bins.sh" --self-test
+    build_release
+}
 
 # check_test_bins <build-dir>: the declared tests and the files in
 # <build-dir>/tests/<category>/bin/ are the same set.
@@ -410,22 +419,17 @@ run_check() {
     for g in $gates; do
         printf '%-15s ' "$g"
         rc=0
+        # Each gate is a manage.sh process of its own.  Called as a function
+        # under "|| rc=$?", a gate would run with errexit switched off (bash
+        # ignores "set -e" inside anything whose status is tested), and a
+        # failing step in its middle would be forgotten if a later one
+        # succeeded.  A separate process keeps "set -e" in force.
         case "$g" in
-            test-bins)
-                # The checker must be able to fail; then the real tree.
-                { "$SCRIPT_DIR/tools/check-test-bins.sh" --self-test &&
-                  build_release && check_test_bins "$BUILD_DIR"; } \
-                                     > "$logdir/$g.log" 2>&1 || rc=$? ;;
-            unit)     run_unit       > "$logdir/$g.log" 2>&1 || rc=$? ;;
-            pty)      run_pty        > "$logdir/$g.log" 2>&1 || rc=$? ;;
-            valgrind) run_valgrind   > "$logdir/$g.log" 2>&1 || rc=$? ;;
-            coverage) run_coverage   > "$logdir/$g.log" 2>&1 || rc=$? ;;
-            package)  do_package all > "$logdir/$g.log" 2>&1 || rc=$? ;;
-            package-output)
-                timeout 900 "$SCRIPT_DIR/tools/check-package-output.sh" \
-                                     > "$logdir/$g.log" 2>&1 || rc=$? ;;
-            consumer) run_consumer   > "$logdir/$g.log" 2>&1 || rc=$? ;;
-        esac
+            package)        "$SCRIPT_DIR/manage.sh" package all ;;
+            package-output) timeout 900 "$SCRIPT_DIR/tools/check-package-output.sh" ;;
+            unit)           "$SCRIPT_DIR/manage.sh" test ;;
+            *)              "$SCRIPT_DIR/manage.sh" "$g" ;;
+        esac > "$logdir/$g.log" 2>&1 || rc=$?
         if [ "$rc" -eq 0 ]; then
             result[$g]=PASS
             echo "PASS"
@@ -474,6 +478,7 @@ case "$cmd" in
     coverage)  run_coverage ;;
     valgrind)  run_valgrind ;;
     consumer)  run_consumer ;;
+    test-bins) run_test_bins ;;
     check)     run_check ;;
     package)   do_package "${1:-deb}" ;;
     clean)     clean ;;
