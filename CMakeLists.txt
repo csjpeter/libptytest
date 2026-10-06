@@ -385,6 +385,11 @@ set(CPACK_PACKAGE_HOMEPAGE_URL  "https://github.com/csjpeter/libptytest")
 # No CPACK_PACKAGE_DESCRIPTION_SUMMARY: CPackDeb would prepend it to each
 # component's description, and the first line of each is its own synopsis.
 set(CPACK_STRIP_FILES ON)
+# Every package of a build, and nothing else, goes to build/packages/; CPack's
+# own staging tree stays in the build directory.  manage.sh empties the
+# directory before each run.  See policies/packaging-and-release-model.md,
+# "Where the output goes".
+set(CPACK_OUTPUT_FILE_PREFIX "${CMAKE_BINARY_DIR}/packages")
 # Without this the directory modes come from the building user's umask.
 set(CPACK_INSTALL_DEFAULT_DIRECTORY_PERMISSIONS
     OWNER_READ OWNER_WRITE OWNER_EXECUTE
