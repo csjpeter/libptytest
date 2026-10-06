@@ -172,7 +172,6 @@ endif()
 if(PTYTEST_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
-    add_subdirectory(examples)
 endif()
 
 # ---------------------------------------------------------------------------

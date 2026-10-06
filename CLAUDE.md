@@ -25,9 +25,15 @@ human.
 ```bash
 ./manage.sh test       # unit tests (ASAN + UBSan) — run most often
 ./manage.sh pty        # PTY tests (ASAN + UBSan)
-./manage.sh check      # every gate: unit, pty, valgrind, coverage, package (+lintian), consumer, package-output
-build/_test/tests/test-screen <substring>   # one test
+./manage.sh check      # every gate: test-bins, unit, pty, valgrind, coverage, package (+lintian), consumer, package-output
+build/_test/tests/unit/bin/test_screen <substring>   # one test
 ```
+
+Tests are declared one per line in `tests/CMakeLists.txt` as
+`project_test(<category> <name> SOURCES ...)` and built into
+`build/tests/<category>/bin/<name>`; helpers go to `.../helpers/`.
+`tools/check-test-bins.sh` fails a build where the two sets differ
+(policies/testing-model.md).
 
 ## Architecture
 

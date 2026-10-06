@@ -105,8 +105,8 @@ target_link_libraries(my-test PRIVATE ptytest::ptytest)   # or ptytest::ptytest_
 ```
 
 or vendored, with `add_subdirectory(path/to/libptytest)` (builds only the
-library). The complete example is `examples/tiny_menu.c` with
-`examples/test_tiny_menu.c`.
+library). The complete example is `examples/tiny_menu.c` with its test
+`tests/pty/test_tiny_menu.c`.
 
 Documentation: `man 7 libptytest` (architecture, how to write a test, the
 emulator's supported and unsupported sequences), `man 3 libptytest` (function

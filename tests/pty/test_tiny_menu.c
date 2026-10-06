@@ -1,9 +1,14 @@
 /**
  * @file test_tiny_menu.c
- * @brief Example PTY test, written as a consuming project would write one.
+ * @brief Example PTY test, written as a consuming project would write one:
+ *        it drives examples/tiny_menu.c.
  *
  *   cc -o test_tiny_menu test_tiny_menu.c $(pkg-config --cflags --libs libptytest)
  *   ./test_tiny_menu ./tiny-menu
+ *
+ * Built by this project's tests/CMakeLists.txt, it knows where the menu is
+ * (PTY_TINY_MENU) and runs with no arguments, as every test in
+ * build/tests/<category>/bin/ must.
  */
 
 #include "ptytest.h"
@@ -78,11 +83,16 @@ static void test_menu(void) {
 }
 
 int main(int argc, char **argv) {
+#ifdef PTY_TINY_MENU
+    g_menu = argc == 2 ? argv[1] : PTY_TINY_MENU;
+    if (argc > 2) {
+#else
+    g_menu = argv[1];
     if (argc != 2) {
+#endif
         fprintf(stderr, "usage: %s PATH-TO-TINY-MENU\n", argv[0]);
         return 2;
     }
-    g_menu = argv[1];
     test_menu();
     printf("%d assertions, %d failed\n", g_tests_run, g_tests_failed);
     /* A floor: an early return must not look like a pass. */
