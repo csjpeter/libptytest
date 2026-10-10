@@ -85,7 +85,8 @@ endif()
 
 include(GNUInstallDirs)
 
-set(PTYTEST_WARNINGS -Wall -Wextra -Wshadow -Wstrict-prototypes -Wformat=2)
+set(PTYTEST_WARNINGS -Wall -Wextra -Wshadow -Wstrict-prototypes -Wformat=2
+    -Werror=null-dereference)
 
 # Hardening for what is shipped; lintian checks for it.
 set(PTYTEST_HARDENING

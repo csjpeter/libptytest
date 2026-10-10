@@ -98,6 +98,7 @@ PtyCell *pty_screen_cell(PtyScreen *scr, int row, int col) {
  * ("background colour erase"); TERM=xterm-256color advertises bce, so
  * programs rely on it to paint areas with a single erase. */
 static void blank(PtyScreen *scr, PtyCell *c) {
+    if (!c) return;   /* pty_screen_cell() returns NULL outside the grid */
     c->ch[0] = ' ';
     c->ch[1] = '\0';
     c->attr  = PTY_ATTR_NONE;
