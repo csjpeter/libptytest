@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-Proprietary
 # Copyright (c) 2026 Peter Csaszar (Császár Péter)
 # Created: 2026-10-10
 # Checks the source-file headers and that every licence declaration agrees.
@@ -23,7 +23,8 @@
 #        check-licence.sh --self-test
 set -euo pipefail
 
-TAG="GPL-3.0-only"
+TAG="GPL-3.0-only OR LicenseRef-Proprietary"
+DUAL_SENTENCE="The copyright holder also licenses this work, separately, under proprietary terms."
 HOLDER='Peter Csaszar \(Császár Péter\)'
 # Declarations in CMakeLists.txt and README.md.
 DEB_LICENCE="GPL-3"
@@ -52,7 +53,8 @@ header_problem() {
 
     local c='(/\*|#)'
     local e='( \*/)?'
-    if ! [[ "${h[0]:-}" =~ ^${c}\ SPDX-License-Identifier:\ ${TAG}${e}$ ]]; then
+    local re_tag="^${c} SPDX-License-Identifier: ${TAG}${e}\$"
+    if ! [[ "${h[0]:-}" =~ $re_tag ]]; then
         echo "line $((n + 1)) is not \"SPDX-License-Identifier: $TAG\""
         return
     fi
@@ -109,6 +111,14 @@ check() {
         fi
     done
 
+    if ! tr '\n' ' ' < "$dir/LICENSE" 2> /dev/null | tr -s ' ' | grep -qF "$DUAL_SENTENCE"; then
+        echo "LICENSE does not carry: $DUAL_SENTENCE"
+        problems=$((problems + 1))
+    fi
+    if ! tr '\n' ' ' < "$dir/CMakeLists.txt" 2> /dev/null | tr -s ' ' | grep -qF "$DUAL_SENTENCE"; then
+        echo "CMakeLists.txt: the Debian copyright file does not carry the dual-licence sentence"
+        problems=$((problems + 1))
+    fi
     if ! grep -qF "Version 3, 29 June 2007" "$dir/LICENSE" 2> /dev/null \
         || ! grep -qF "GNU GENERAL PUBLIC LICENSE" "$dir/LICENSE"; then
         echo "LICENSE is not the GNU GPL version 3 text"
@@ -144,7 +154,7 @@ good_header() {
 
 good_cmake() {
     good_header
-    printf 'License: %s\nset(CPACK_RPM_PACKAGE_LICENSE "%s")\n' "$DEB_LICENCE" "$RPM_LICENCE"
+    printf 'License: %s\n %s\nset(CPACK_RPM_PACKAGE_LICENSE "%s")\n' "$DEB_LICENCE" "$DUAL_SENTENCE" "$RPM_LICENCE"
 }
 
 self_test() {
@@ -153,7 +163,7 @@ self_test() {
     trap 'rm -f "$tmp/LICENSE" "$tmp/CMakeLists.txt" "$tmp/README.md" "$tmp/a.sh"; rm -rf "$tmp/.git"; rmdir "$tmp"' EXIT
 
     git -C "$tmp" init -q
-    printf 'GNU GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007\n' > "$tmp/LICENSE"
+    printf '%s\nGNU GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007\n' "$DUAL_SENTENCE" > "$tmp/LICENSE"
     printf '%s\n' "$README_LICENCE" > "$tmp/README.md"
     good_cmake > "$tmp/CMakeLists.txt"
     { printf '#!/bin/sh\n'; good_header; printf 'exit 0\n'; } > "$tmp/a.sh"
@@ -175,6 +185,8 @@ self_test() {
     expect_fail "a file has no header"
     set_script "# SPDX-License-Identifier: GPL-3.0-or-later" "# Copyright (c) 2026 Peter Csaszar (Császár Péter)" "# Created: 2026-10-03" "# Purpose."
     expect_fail "the tag says or-later"
+    set_script "# SPDX-License-Identifier: GPL-3.0-only" "# Copyright (c) 2026 Peter Csaszar (Császár Péter)" "# Created: 2026-10-03" "# Purpose."
+    expect_fail "the tag lacks the dual licence"
     set_script "# SPDX-License-Identifier: $TAG" "# Copyright (c) 2026 Somebody Else" "# Created: 2026-10-03" "# Purpose."
     expect_fail "the copyright holder is wrong"
     set_script "# SPDX-License-Identifier: $TAG" "# Copyright (c) 2026 Peter Csaszar (Császár Péter)" "# Purpose."
@@ -191,14 +203,18 @@ self_test() {
     expect_fail "the shebang is not on line 1 (header first)"
     { printf '#!/bin/sh\n'; good_header; } > "$tmp/a.sh"
 
+    good_cmake | grep -v "$DUAL_SENTENCE" > "$tmp/CMakeLists.txt"
+    expect_fail "the Debian copyright file lacks the dual-licence sentence"
     good_cmake | sed 's/^License: .*/License: MIT/' > "$tmp/CMakeLists.txt"
     expect_fail "the Debian licence is wrong"
     good_cmake | sed "s/\"$RPM_LICENCE\"/\"MIT\"/" > "$tmp/CMakeLists.txt"
     expect_fail "the RPM licence is wrong"
     good_cmake > "$tmp/CMakeLists.txt"
+    printf 'GNU GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007\n' > "$tmp/LICENSE"
+    expect_fail "LICENSE lacks the dual-licence sentence"
     printf 'MIT\n' > "$tmp/LICENSE"
     expect_fail "LICENSE is not the GPL"
-    printf 'GNU GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007\n' > "$tmp/LICENSE"
+    printf '%s\nGNU GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007\n' "$DUAL_SENTENCE" > "$tmp/LICENSE"
     printf '%s, or (at your option) any later version\n' "$README_LICENCE" > "$tmp/README.md"
     git -C "$tmp" add -A
     expect_fail "the README says \"any later version\""

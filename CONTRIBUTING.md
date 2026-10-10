@@ -1,7 +1,8 @@
 # Contributing to libptytest
 
 libptytest is released under the GNU General Public License, version 3 only
-(`GPL-3.0-only`).
+(`GPL-3.0-only`), and the copyright holder also licenses it, separately, under
+proprietary terms to his own proprietary projects.
 
 ## Before you start
 
