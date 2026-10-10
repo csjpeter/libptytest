@@ -612,6 +612,15 @@ static const PtyStyleKey *legend_find(const PtyStyleKey *legend, char key) {
     return NULL;
 }
 
+/* The legend entry of a key that has already been checked to be in the
+ * legend; never NULL, so the callers need no guard.  An unknown key (which
+ * the validation of the style map rules out) reads as a plain style. */
+static const PtyStyleKey *legend_get(const PtyStyleKey *legend, char key) {
+    static const PtyStyleKey unknown = { '?', PTY_ATTR_NONE, 0, 0 };
+    const PtyStyleKey *k = legend_find(legend, key);
+    return k ? k : &unknown;
+}
+
 static char style_key(const PtyStyleKey *legend, const PtyCell *c) {
     for (const PtyStyleKey *k = legend; k->key; k++)
         if (k->attr == c->attr && k->fg == c->fg && k->bg == c->bg) return k->key;
@@ -701,7 +710,7 @@ int pty_region_compare_style(PtySession *s, const PtyRegion *reg,
         for (int c = 0; c < len; c++) {
             char k = expected[r][c];
             if (k == wc) continue;
-            const PtyStyleKey *want = legend_find(legend, k);
+            const PtyStyleKey *want = legend_get(legend, k);
             PtyCell *cell = pty_screen_cell(s->screen, a.row + r, a.col + c);
             if (want->attr != cell->attr || want->fg != cell->fg || want->bg != cell->bg) {
                 diff[(size_t)r * (size_t)a.cols + (size_t)c] = 1;
@@ -766,7 +775,7 @@ int pty_region_compare_style(PtySession *s, const PtyRegion *reg,
                 for (int c = 0; c < len && ok; c++) {
                     int src = c - sh;
                     if (src < 0 || src >= len || expected[r][src] == wc) continue;
-                    const PtyStyleKey *want = legend_find(legend, expected[r][src]);
+                    const PtyStyleKey *want = legend_get(legend, expected[r][src]);
                     PtyCell *cell = pty_screen_cell(s->screen, a.row + r, a.col + c);
                     ok = want->attr == cell->attr && want->fg == cell->fg && want->bg == cell->bg;
                 }
@@ -781,7 +790,7 @@ int pty_region_compare_style(PtySession *s, const PtyRegion *reg,
 
         for (int c = 0; c < len; c++) {
             if (!d[c]) continue;
-            const PtyStyleKey *want = legend_find(legend, expected[r][c]);
+            const PtyStyleKey *want = legend_get(legend, expected[r][c]);
             PtyCell *cell = pty_screen_cell(s->screen, a.row + r, a.col + c);
             sb_printf(&sb, "    first difference at col %d (", a.col + c);
             describe_text(&sb, cell->ch);
