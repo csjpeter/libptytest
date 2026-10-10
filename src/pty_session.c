@@ -22,11 +22,7 @@
 #include <sys/ioctl.h>
 #include <sys/wait.h>
 
-#if defined(__APPLE__)
-#include <util.h>
-#else
 #include <pty.h>
-#endif
 
 #ifndef PTYTEST_VERSION_STRING
 #define PTYTEST_VERSION_STRING "unknown"

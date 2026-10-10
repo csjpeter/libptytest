@@ -125,6 +125,7 @@ man/            man3/*.3, man7/libptytest.7
 tests/unit/     emulator and inspection API, in-process
 tests/pty/      real programs through a real PTY (with pty_fixture.c)
 examples/       a small TUI, its PTY test, and a consumer build
+docs/           portability.md: what binds the project to Linux
 cmake/          package config, pkg-config template, .deb build metadata
 ```
 

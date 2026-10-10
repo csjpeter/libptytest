@@ -137,7 +137,7 @@ function(ptytest_configure_target _tgt)
     target_compile_definitions(${_tgt} PRIVATE
         PTYTEST_VERSION_STRING="${PTYTEST_VERSION}")
     target_compile_options(${_tgt} PRIVATE ${PTYTEST_WARNINGS} ${PTYTEST_HARDENING})
-    # forkpty() lives in libutil on older glibc and on the BSDs.
+    # forkpty() lives in libutil on older glibc.
     if(PTYTEST_UTIL_LIB)
         target_link_libraries(${_tgt} PRIVATE util)
     endif()
