@@ -1,5 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Péter Császár <peter@csaszar.email>
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (c) 2026 Peter Csaszar (Császár Péter)
+# Created: 2026-10-03
+# CPack post-build step: adds the XB- control fields and replaces the ldconfig scripts by a triggers file.
 # Post-processing of each built Debian package, run by CPack after it has
 # written the packages (CPACK_POST_BUILD_SCRIPTS).  Two things CPack cannot
 # express through its variables are done here, so that the decision still

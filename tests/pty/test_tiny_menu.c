@@ -1,6 +1,7 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later
- * Copyright (C) 2026 Péter Császár <peter@csaszar.email>
- */
+/* SPDX-License-Identifier: GPL-3.0-only */
+/* Copyright (c) 2026 Peter Csaszar (Császár Péter) */
+/* Created: 2026-10-03 */
+/* PTY test of the example menu program. */
 /**
  * @file test_tiny_menu.c
  * @brief Example PTY test, written as a consuming project would write one:

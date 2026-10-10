@@ -59,5 +59,7 @@ Tests are declared one per line in `tests/CMakeLists.txt` as
 - The ABI is versioned by `SOVERSION` (= major version). Removing or changing
   an exported function's signature is a major version bump and a package
   rename (`libptytest0` → `libptytest1`).
+- **Every source file and script has the four-line header** (SPDX tag,
+  copyright, `Created:` date, purpose); `./manage.sh licence` checks it.
 - Source, comments and documentation are in English.
 - C11, no external test framework, no dependencies beyond libc (+ libutil).

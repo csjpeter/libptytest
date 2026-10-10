@@ -13,9 +13,10 @@ your option) any later version (`GPL-3.0-or-later`).
 
 ## Licence of contributions
 
-Every file carries `SPDX-License-Identifier: GPL-3.0-or-later` and the
-copyright line of the project. A new file gets the same two lines
-(`./manage.sh licence` checks it).
+Every source file and script begins with the four-line header of
+`policies/source-header-model.md`: the SPDX licence tag, the copyright line,
+`Created: YYYY-MM-DD` and one line saying what the file is (after the shebang
+on a script). `./manage.sh licence` fails on a file without it.
 
 The project's copyright is held entirely by its author, so that the code can
 keep one licensing position. **A contribution is accepted only when you state,

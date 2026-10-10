@@ -1,5 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Péter Császár <peter@csaszar.email>
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (c) 2026 Peter Csaszar (Császár Péter)
+# Created: 2026-10-03
+# Declaration of the unit and PTY tests and their helpers.
 # The project's tests.  Every test is declared on one line of one shape,
 #
 #     project_test(<category> <name> SOURCES <file>... [LIBS <lib>...] [TIMEOUT <s>])

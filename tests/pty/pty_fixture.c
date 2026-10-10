@@ -1,6 +1,7 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later
- * Copyright (C) 2026 Péter Császár <peter@csaszar.email>
- */
+/* SPDX-License-Identifier: GPL-3.0-only */
+/* Copyright (c) 2026 Peter Csaszar (Császár Péter) */
+/* Created: 2026-10-03 */
+/* Helper program driven by the PTY tests, with selectable modes. */
 /**
  * @file pty_fixture.c
  * @brief A small terminal program for the PTY tests to drive.

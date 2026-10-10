@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Péter Császár <peter@csaszar.email>
-# Maintenance front end of libptytest.
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (c) 2026 Peter Csaszar (Császár Péter)
+# Created: 2026-10-03
+# Maintenance front end of libptytest: build, test, coverage, package and check verbs.
 #
 # Every verb delegates to the real tool -- CMake, CTest, CPack, Valgrind,
 # lcov -- and decides nothing their own configuration should decide.  The

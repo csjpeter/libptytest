@@ -1,5 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Péter Császár <peter@csaszar.email>
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (c) 2026 Peter Csaszar (Császár Péter)
+# Created: 2026-10-03
+# Consumer build: compiles and runs the example against the installed package content.
 # Builds the example the way another project would: against an installed
 # libptytest, found with find_package().  "./manage.sh consumer" points
 # CMAKE_PREFIX_PATH at the content of the built .deb packages, so what is
