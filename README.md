@@ -147,12 +147,12 @@ lists the tests).
 
 ## License
 
-Copyright (C) 2026 Péter Császár.
+Copyright (c) 2026 Peter Csaszar (Császár Péter).
 
 libptytest is free software, released under the **GNU General Public License,
-version 3 or (at your option) any later version** (`GPL-3.0-or-later`). The
+version 3 only** (`GPL-3.0-only`). The
 licence text is in `LICENSE`; every source file carries
-`SPDX-License-Identifier: GPL-3.0-or-later`, and `./manage.sh licence` fails if
+`SPDX-License-Identifier: GPL-3.0-only`, and `./manage.sh licence` fails if
 a file does not, or if `LICENSE`, the Debian copyright file or the package's
 licence field disagree.
 

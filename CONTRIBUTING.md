@@ -1,7 +1,7 @@
 # Contributing to libptytest
 
-libptytest is released under the GNU General Public License, version 3 or (at
-your option) any later version (`GPL-3.0-or-later`).
+libptytest is released under the GNU General Public License, version 3 only
+(`GPL-3.0-only`).
 
 ## Before you start
 
@@ -24,7 +24,7 @@ in the pull request, that you assign the copyright of it to the project's
 author, or license it to the author under terms that allow relicensing**
 (for example an unrestricted licence grant). Without that statement a
 contribution cannot be merged. Do not include code you did not write or whose
-licence is not GPL-3.0-or-later compatible.
+licence is not GPL-3.0-only compatible.
 
 ## Checks
 
