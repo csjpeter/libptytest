@@ -4,6 +4,8 @@ Guidance for Claude Code working in this repository.
 
 ## Policies first
 
+Index of every policy: `../policies/README.md`. Change flow: `../policies/change-flow-model.md` (a ticket, a branch named exactly after its key, the key in each commit message; a finished ticket goes to `READY` and the owner closes). Never write into `policies/`; file a ticket under the owning key instead.
+
 This project follows the workspace policies in `../policies/` — read them
 before changing build, test or packaging behaviour, and re-read them
 regularly: they change. They are never edited from here (see
