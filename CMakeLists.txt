@@ -247,7 +247,7 @@ add_custom_target(ptytest_man ALL DEPENDS ${PTYTEST_MAN_GZ} ${PTYTEST_MAN_LINKS}
 # Debian documentation: copyright and changelog, which lintian requires in
 # every binary package.
 # ---------------------------------------------------------------------------
-set(PTYTEST_MAINTAINER "Péter Császár <peter@csaszar.email>")
+set(PTYTEST_MAINTAINER "Péter Császár <csjpeter@gmail.com>")
 set(PTYTEST_PKG_RUNTIME "libptytest${PROJECT_VERSION_MAJOR}")
 set(PTYTEST_PKG_DEV     "libptytest-dev")
 
