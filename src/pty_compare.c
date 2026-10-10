@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 Péter Császár <peter@csaszar.email>
+ */
 /**
  * @file pty_compare.c
  * @brief Region comparison of text and style, and reports that explain a

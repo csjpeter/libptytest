@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Péter Császár <peter@csaszar.email>
 # The project's tests.  Every test is declared on one line of one shape,
 #
 #     project_test(<category> <name> SOURCES <file>... [LIBS <lib>...] [TIMEOUT <s>])

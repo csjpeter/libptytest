@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 Péter Császár <peter@csaszar.email>
+ */
 /**
  * @file tiny_menu.c
  * @brief A minimal full-screen menu: the program under test in the example.

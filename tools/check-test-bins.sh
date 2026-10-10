@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Péter Császár <peter@csaszar.email>
 # Checks that the tests declared in tests/CMakeLists.txt and the files in
 # <build>/tests/<category>/bin/ are the same set:
 #

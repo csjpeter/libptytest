@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 Péter Császár <peter@csaszar.email>
+ */
 #ifndef PTY_ASSERT_H
 #define PTY_ASSERT_H
 

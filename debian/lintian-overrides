@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Péter Császár <peter@csaszar.email>
 # XB-Git-Commit and XB-Build-Date carry the build's identity.  The XB- prefix
 # is Debian's own mechanism for adding a field to a binary package, so the
 # field is correct and lintian simply has no name for it.  It goes beside the

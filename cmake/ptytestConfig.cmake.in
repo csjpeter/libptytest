@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Péter Császár <peter@csaszar.email>
 # CMake package file for libptytest.
 #
 #   find_package(ptytest 0.1 REQUIRED)

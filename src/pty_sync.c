@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 Péter Császár <peter@csaszar.email>
+ */
 /**
  * @file pty_sync.c
  * @brief PTY output reading and synchronisation (poll + deadline).

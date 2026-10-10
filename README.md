@@ -138,6 +138,7 @@ cmake/          package config, pkg-config template, .deb build metadata
 ./manage.sh coverage    # src/ line coverage: unit alone >= 80%, pty tests >= 80%, all >= 90%
 ./manage.sh package     # build/packages/: exactly this run's .debs, lintian clean
 ./manage.sh consumer    # build and run the example against the .deb content
+./manage.sh licence     # SPDX header in every file, one licence everywhere
 ./manage.sh check       # all of the above, with a summary
 ```
 
@@ -146,4 +147,20 @@ lists the tests).
 
 ## License
 
-GPL-3.0-or-later, see `LICENSE`.
+Copyright (C) 2026 Péter Császár.
+
+libptytest is free software, released under the **GNU General Public License,
+version 3 or (at your option) any later version** (`GPL-3.0-or-later`). The
+licence text is in `LICENSE`; every source file carries
+`SPDX-License-Identifier: GPL-3.0-or-later`, and `./manage.sh licence` fails if
+a file does not, or if `LICENSE`, the Debian copyright file or the package's
+licence field disagree.
+
+- The library depends on nothing but the C library (and `libutil`), so no
+  third-party licence reaches the code.
+- The test harness and examples use no external framework.
+- The code started as the PTY test harness of `email-cli`, by the same
+  author, and was extracted into this project; it contains no code of other
+  authors.
+
+Contributions: see `CONTRIBUTING.md`.
