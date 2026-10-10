@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Péter Császár <peter@csaszar.email>
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (c) 2026 Peter Csaszar (Császár Péter)
+# Created: 2026-10-06
+# Proves the build/packages/ output rule of manage.sh package in four scenarios.
 # Proves the packaging output rule on a copy of the working tree:
 #
 #   1. a successful "package deb" leaves in build/packages/ exactly the

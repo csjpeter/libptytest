@@ -1,6 +1,7 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later
- * Copyright (C) 2026 Péter Császár <peter@csaszar.email>
- */
+/* SPDX-License-Identifier: GPL-3.0-only */
+/* Copyright (c) 2026 Peter Csaszar (Császár Péter) */
+/* Created: 2026-10-03 */
+/* Unit tests of the inspection and comparison API. */
 /**
  * @file test_inspect.c
  * @brief Unit tests for the screen inspection API and the assertion

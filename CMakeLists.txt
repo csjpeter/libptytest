@@ -1,5 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Péter Császár <peter@csaszar.email>
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (c) 2026 Peter Csaszar (Császár Péter)
+# Created: 2026-10-03
+# Build, install and package rules of libptytest: library, man pages, CPack.
 cmake_minimum_required(VERSION 3.20)
 project(libptytest VERSION 0.1.2 LANGUAGES C)
 

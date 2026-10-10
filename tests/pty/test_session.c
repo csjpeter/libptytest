@@ -1,6 +1,7 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later
- * Copyright (C) 2026 Péter Császár <peter@csaszar.email>
- */
+/* SPDX-License-Identifier: GPL-3.0-only */
+/* Copyright (c) 2026 Peter Csaszar (Császár Péter) */
+/* Created: 2026-10-03 */
+/* PTY tests of the session lifecycle, input, resize and exit handling. */
 /**
  * @file test_session.c
  * @brief PTY tests: real programs through a real pseudo-terminal, using
