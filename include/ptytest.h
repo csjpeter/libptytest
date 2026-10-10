@@ -19,7 +19,8 @@
  * the program under test is replaced.  What it understands, and what it
  * drops, is documented in libptytest(7).
  *
- * Depends only on POSIX (forkpty, poll) and the C library.
+ * Depends only on the C library of Linux (forkpty, poll); see
+ * docs/portability.md.
  *
  * See policies/testing-model.md in the workspace, "A TUI is tested through
  * a real terminal, cell by cell".
