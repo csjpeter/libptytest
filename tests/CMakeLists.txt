@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-only
+# SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-Proprietary
 # Copyright (c) 2026 Peter Csaszar (Császár Péter)
 # Created: 2026-10-03
 # Declaration of the unit and PTY tests and their helpers.
