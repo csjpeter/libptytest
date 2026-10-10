@@ -26,9 +26,9 @@ set -euo pipefail
 TAG="GPL-3.0-only"
 HOLDER='Peter Csaszar \(Császár Péter\)'
 # Declarations in CMakeLists.txt and README.md.
-DEB_LICENCE="GPL-3+"
-RPM_LICENCE="GPL-3.0-or-later"
-README_LICENCE="GPL-3.0-or-later"
+DEB_LICENCE="GPL-3"
+RPM_LICENCE="GPL-3.0-only"
+README_LICENCE="GPL-3.0-only"
 
 # header_problem <file>: prints why the header of <file> is wrong, if it is.
 header_problem() {
@@ -126,6 +126,14 @@ check() {
         echo "README.md does not name $README_LICENCE"
         problems=$((problems + 1))
     fi
+
+    # Nothing but the licence text itself may say "or later".
+    local hit
+    while IFS= read -r hit; do
+        echo "says \"or later\": $hit"
+        problems=$((problems + 1))
+    done < <(git -C "$dir" grep -n -i -E '(^|[^[:alnum:]])or[- ]later|any later version' -- . \
+        ':!LICENSE' ':!tools/check-licence.sh')
     return "$problems"
 }
 
@@ -190,6 +198,10 @@ self_test() {
     good_cmake > "$tmp/CMakeLists.txt"
     printf 'MIT\n' > "$tmp/LICENSE"
     expect_fail "LICENSE is not the GPL"
+    printf 'GNU GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007\n' > "$tmp/LICENSE"
+    printf '%s, or (at your option) any later version\n' "$README_LICENCE" > "$tmp/README.md"
+    git -C "$tmp" add -A
+    expect_fail "the README says \"any later version\""
     echo "check-licence self-test: ok"
 }
 

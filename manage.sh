@@ -51,7 +51,7 @@ Commands:
   test-bins             Self-test tools/check-test-bins.sh, then build and check
                         that declared tests and build/tests/*/bin/ agree
   licence               Self-test tools/check-licence.sh, then check that every
-                        file and declaration says GPL-3.0-or-later
+                        file and declaration says GPL-3.0-only
   check                 Every gate, with a summary to compare against CI; includes
                         tools/check-package-output.sh, which proves the rule above
   package [deb|rpm|all] Build the packages into build/packages/ (emptied first;
