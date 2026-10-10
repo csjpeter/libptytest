@@ -52,6 +52,8 @@ Commands:
                         that declared tests and build/tests/*/bin/ agree
   licence               Self-test tools/check-licence.sh, then check that every
                         file and declaration says GPL-3.0-only
+  private-names         Self-test tools/check-private-names.sh, then fail if a
+                        tracked file names the owner's private domain
   check                 Every gate, with a summary to compare against CI; includes
                         tools/check-package-output.sh, which proves the rule above
   package [deb|rpm|all] Build the packages into build/packages/ (emptied first;
@@ -104,6 +106,13 @@ install_deps() {
 run_licence() {
     "$SCRIPT_DIR/tools/check-licence.sh" --self-test
     "$SCRIPT_DIR/tools/check-licence.sh"
+}
+
+# private-names: the checker must be able to fail (its self-test), then the
+# tree (policies/private-names-model.md).
+run_private_names() {
+    "$SCRIPT_DIR/tools/check-private-names.sh" --self-test
+    "$SCRIPT_DIR/tools/check-private-names.sh"
 }
 
 # test-bins: the checker must be able to fail (its self-test), then the
@@ -469,7 +478,7 @@ run_check() {
     local logdir="$BUILD_DIR/_logs"
     mkdir -p "$logdir"
 
-    local gates="licence test-bins unit pty valgrind coverage package consumer package-output"
+    local gates="licence private-names test-bins unit pty valgrind coverage package consumer package-output"
     local -A result
     local g rc failed=0
     for g in $gates; do
@@ -535,6 +544,7 @@ case "$cmd" in
     valgrind)  run_valgrind ;;
     consumer)  run_consumer ;;
     licence) run_licence ;;
+    private-names) run_private_names ;;
     test-bins) run_test_bins ;;
     check)     run_check ;;
     package)   do_package "${1:-deb}" ;;
