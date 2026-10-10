@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (C) 2026 Péter Császár <peter@csaszar.email>
+ */
 #ifndef PTY_INTERNAL_H
 #define PTY_INTERNAL_H
 

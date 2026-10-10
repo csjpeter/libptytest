@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Péter Császár <peter@csaszar.email>
 cmake_minimum_required(VERSION 3.20)
 project(libptytest VERSION 0.1.2 LANGUAGES C)
 

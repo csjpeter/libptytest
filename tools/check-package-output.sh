@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Péter Császár <peter@csaszar.email>
 # Proves the packaging output rule on a copy of the working tree:
 #
 #   1. a successful "package deb" leaves in build/packages/ exactly the

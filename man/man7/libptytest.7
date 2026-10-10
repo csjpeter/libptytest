@@ -1,3 +1,5 @@
+.\" SPDX-License-Identifier: GPL-3.0-or-later
+.\" Copyright (C) 2026 Péter Császár <peter@csaszar.email>
 .TH LIBPTYTEST 7 2026-10-03 "libptytest 0.1" "libptytest Manual"
 .SH NAME
 libptytest \- architecture of the PTY-driven, cell-exact terminal test library
@@ -295,6 +297,18 @@ target_link_libraries(my\-test PRIVATE ptytest::ptytest)
 The source tree can also be used with
 .BR add_subdirectory() ,
 which builds only the library.
+.SH LICENSE
+libptytest is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version.
+It is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+A PARTICULAR PURPOSE.
+See the file
+.I LICENSE
+and the project's
+.IR CONTRIBUTING.md .
 .SH SEE ALSO
 .BR libptytest (3),
 .BR pty_assert (3),

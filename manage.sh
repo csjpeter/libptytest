@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Péter Császár <peter@csaszar.email>
 # Maintenance front end of libptytest.
 #
 # Every verb delegates to the real tool -- CMake, CTest, CPack, Valgrind,
@@ -47,6 +49,8 @@ Commands:
   consumer              Build and run the example against the built .deb packages
   test-bins             Self-test tools/check-test-bins.sh, then build and check
                         that declared tests and build/tests/*/bin/ agree
+  licence               Self-test tools/check-licence.sh, then check that every
+                        file and declaration says GPL-3.0-or-later
   check                 Every gate, with a summary to compare against CI; includes
                         tools/check-package-output.sh, which proves the rule above
   package [deb|rpm|all] Build the packages into build/packages/ (emptied first;
@@ -94,6 +98,12 @@ install_deps() {
 # instrumentation is sticky in a CMake cache and would otherwise leak into
 # release binaries and packages (policies/testing-model.md).
 # ---------------------------------------------------------------------------
+
+# licence: the checker must be able to fail (its self-test), then the tree.
+run_licence() {
+    "$SCRIPT_DIR/tools/check-licence.sh" --self-test
+    "$SCRIPT_DIR/tools/check-licence.sh"
+}
 
 # test-bins: the checker must be able to fail (its self-test), then the
 # Release tree is built and checked.
@@ -458,7 +468,7 @@ run_check() {
     local logdir="$BUILD_DIR/_logs"
     mkdir -p "$logdir"
 
-    local gates="test-bins unit pty valgrind coverage package consumer package-output"
+    local gates="licence test-bins unit pty valgrind coverage package consumer package-output"
     local -A result
     local g rc failed=0
     for g in $gates; do
@@ -523,6 +533,7 @@ case "$cmd" in
     coverage)  run_coverage ;;
     valgrind)  run_valgrind ;;
     consumer)  run_consumer ;;
+    licence) run_licence ;;
     test-bins) run_test_bins ;;
     check)     run_check ;;
     package)   do_package "${1:-deb}" ;;
