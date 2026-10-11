@@ -101,7 +101,7 @@ check() {
 
     for f in "${files[@]}"; do
         case "$f" in
-            LICENSE|.gitignore|*.md|man/*) continue ;;
+            LICENSE|LICENSES/*|.gitignore|*.md|man/*) continue ;;
         esac
         [ -f "$dir/$f" ] || continue
         why="$(header_problem "$dir/$f")"
@@ -111,6 +111,10 @@ check() {
         fi
     done
 
+    if ! grep -q 'LicenseRef-Proprietary' "$dir/LICENSES/LicenseRef-Proprietary.txt" 2> /dev/null; then
+        echo "LICENSES/LicenseRef-Proprietary.txt is missing: the identifier used in every tag must be defined"
+        problems=$((problems + 1))
+    fi
     if ! tr '\n' ' ' < "$dir/LICENSE" 2> /dev/null | tr -s ' ' | grep -qF "$DUAL_SENTENCE"; then
         echo "LICENSE does not carry: $DUAL_SENTENCE"
         problems=$((problems + 1))
@@ -160,12 +164,14 @@ good_cmake() {
 self_test() {
     tmp="$(mktemp -d "/tmp/check-licence-$$-XXXXXX")"
     case "$tmp" in /tmp/check-licence-*) ;; *) echo "ERROR: unsafe path: '$tmp'" >&2; exit 1 ;; esac
-    trap 'rm -f "$tmp/LICENSE" "$tmp/CMakeLists.txt" "$tmp/README.md" "$tmp/a.sh"; rm -rf "$tmp/.git"; rmdir "$tmp"' EXIT
+    trap 'rm -f "$tmp/LICENSE" "$tmp/CMakeLists.txt" "$tmp/README.md" "$tmp/a.sh" "$tmp/LICENSES/LicenseRef-Proprietary.txt"; rmdir "$tmp/LICENSES"; rm -rf "$tmp/.git"; rmdir "$tmp"' EXIT
 
     git -C "$tmp" init -q
     printf '%s\nGNU GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007\n' "$DUAL_SENTENCE" > "$tmp/LICENSE"
     printf '%s\n' "$README_LICENCE" > "$tmp/README.md"
     good_cmake > "$tmp/CMakeLists.txt"
+    mkdir "$tmp/LICENSES"
+    printf 'LicenseRef-Proprietary\n' > "$tmp/LICENSES/LicenseRef-Proprietary.txt"
     { printf '#!/bin/sh\n'; good_header; printf 'exit 0\n'; } > "$tmp/a.sh"
     git -C "$tmp" add -A
 
@@ -210,6 +216,9 @@ self_test() {
     good_cmake | sed "s/\"$RPM_LICENCE\"/\"MIT\"/" > "$tmp/CMakeLists.txt"
     expect_fail "the RPM licence is wrong"
     good_cmake > "$tmp/CMakeLists.txt"
+    printf '' > "$tmp/LICENSES/LicenseRef-Proprietary.txt"
+    expect_fail "the LicenseRef-Proprietary definition is empty"
+    printf 'LicenseRef-Proprietary\n' > "$tmp/LICENSES/LicenseRef-Proprietary.txt"
     printf 'GNU GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007\n' > "$tmp/LICENSE"
     expect_fail "LICENSE lacks the dual-licence sentence"
     printf 'MIT\n' > "$tmp/LICENSE"
