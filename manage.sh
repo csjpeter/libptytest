@@ -23,6 +23,11 @@ BUILD_DIR_VALGRIND="$BUILD_DIR/_valgrind"
 BUILD_DIR_CONSUMER="$BUILD_DIR/_consumer"
 PACKAGE_DIR="$BUILD_DIR/packages"
 
+# One line per run of a verb: "<UTC time> <verb> <seconds>s <ok|fail>".  The
+# override exists so that tools/check-timing.sh can test the record without
+# touching the real one (policies/manage-sh-model.md, "Every verb times itself").
+TIMING_LOG="${MANAGE_TIMING_LOG:-$BUILD_DIR/timing.log}"
+
 # Line coverage of the library sources (src/) below these fails the run.
 # The policy's floor is 80% for the unit tests alone and 80% for the
 # externally driven tests together; a project may set them higher, never
@@ -59,6 +64,10 @@ Commands:
   package [deb|rpm|all] Build the packages into build/packages/ (emptied first;
                         left empty, exit non-zero, if the build, lintian or the
                         upward-only dependency check fails)
+  timing-log            Self-test tools/check-timing.sh: the timing record and
+                        the gate line, including "not measured"
+  timing [KEY-N]        Print the gate line from build/timing.log; with a key,
+                        also comment it on that ticket with issue-cli
   clean                 Remove build/
   help                  This message
 
@@ -478,7 +487,7 @@ run_check() {
     local logdir="$BUILD_DIR/_logs"
     mkdir -p "$logdir"
 
-    local gates="licence private-names test-bins unit pty valgrind coverage package consumer package-output"
+    local gates="licence private-names test-bins timing-log unit pty valgrind coverage package consumer package-output"
     local -A result
     local g rc failed=0
     for g in $gates; do
@@ -532,8 +541,81 @@ clean() {
     echo "Cleaned."
 }
 
+# ---------------------------------------------------------------------------
+# Timing: every verb that does work appends its wall-clock seconds to the
+# record; "timing" prints the gate line from it.  Nothing is estimated.
+# ---------------------------------------------------------------------------
+
+# gate_line: prints "Gate: <total>s (check <s>s, package <s>s, install <s>s)"
+# from the latest successful run of each of those verbs; a part with no
+# record is left out.  With none of them recorded: "Gate: not measured",
+# exit status 1.
+gate_line() {
+    local line=""
+    if [ -s "$TIMING_LOG" ]; then
+        line="$(awk '
+            $4 == "ok" && ($2 == "check" || $2 == "package" || $2 == "install" || $2 == "install-deb") {
+                v = ($2 == "install-deb") ? "install" : $2
+                secs[v] = $3; sub("s$", "", secs[v])
+            }
+            END {
+                n = 0; total = 0; parts = ""
+                split("check package install", order, " ")
+                for (i = 1; i <= 3; i++) {
+                    v = order[i]
+                    if (v in secs) {
+                        parts = parts (n ? ", " : "") v " " secs[v] "s"
+                        total += secs[v]; n++
+                    }
+                }
+                if (n) printf "Gate: %ds (%s)\n", total, parts
+            }' "$TIMING_LOG")"
+    fi
+    if [ -z "$line" ]; then
+        echo "Gate: not measured"
+        return 1
+    fi
+    echo "$line"
+}
+
+# run_timing [KEY-N]
+run_timing() {
+    local line rc=0
+    line="$(gate_line)" || rc=$?
+    echo "$line"
+    if [ -n "${1:-}" ]; then
+        # A key with nothing measured still gets the honest line.
+        "${ISSUE_CLI:-issue-cli}" issue comment "$1" "$line" || return 1
+    fi
+    return "$rc"
+}
+
 cmd="${1:-help}"
 [ $# -gt 0 ] && shift
+
+# Verbs that do work time themselves: the verb runs as a child manage.sh so
+# that its own "set -e" stays in force, and its start, end and status are
+# read here.  MANAGE_INNER marks that child for one level only; the verbs it
+# starts (check runs its gates this way) are timed in turn.
+case "$cmd" in
+    deps|build|debug|test|pty|coverage|valgrind|consumer|licence|private-names|\
+    test-bins|timing-log|check|package)
+        if [ -z "${MANAGE_INNER:-}" ]; then
+            t_start="$(date +%s)"
+            t_rc=0
+            MANAGE_INNER=1 "$SCRIPT_DIR/manage.sh" "$cmd" "$@" || t_rc=$?
+            t_end="$(date +%s)"
+            t_state=ok
+            [ "$t_rc" -eq 0 ] || t_state=fail
+            mkdir -p "$(dirname "$TIMING_LOG")"
+            printf '%s %s %ss %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$cmd" \
+                   "$((t_end - t_start))" "$t_state" >> "$TIMING_LOG"
+            exit "$t_rc"
+        fi
+        unset MANAGE_INNER
+        ;;
+esac
+
 case "$cmd" in
     deps)      install_deps ;;
     build)     build_release ;;
@@ -547,6 +629,8 @@ case "$cmd" in
     private-names) run_private_names ;;
     test-bins) run_test_bins ;;
     check)     run_check ;;
+    timing)    run_timing "$@" ;;
+    timing-log) "$SCRIPT_DIR/tools/check-timing.sh" ;;
     package)   do_package "${1:-deb}" ;;
     clean)     clean ;;
     help|-h|--help) usage ;;
