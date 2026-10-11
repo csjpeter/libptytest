@@ -141,6 +141,7 @@ cmake/          package config, pkg-config template, .deb build metadata
 ./manage.sh consumer    # build and run the example against the .deb content
 ./manage.sh licence     # SPDX header in every file, one licence everywhere
 ./manage.sh check       # all of the above, with a summary
+./manage.sh timing [KEY-N]  # gate line from build/timing.log (every verb appends its seconds); with a key, comments it on the ticket
 ```
 
 One test: `build/_test/tests/test-screen test_utf8` (substring filter, `-l`
