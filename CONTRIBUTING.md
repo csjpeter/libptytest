@@ -1,8 +1,7 @@
 # Contributing to libptytest
 
 libptytest is released under the GNU General Public License, version 3 only
-(`GPL-3.0-only`), and the copyright holder also licenses it, separately, under
-proprietary terms to his own proprietary projects.
+(`GPL-3.0-only`).
 
 ## Before you start
 
@@ -19,8 +18,8 @@ Every source file and script begins with the four-line header of
 `Created: YYYY-MM-DD` and one line saying what the file is (after the shebang
 on a script). `./manage.sh licence` fails on a file without it.
 
-The project's copyright is held entirely by its author, so that the code can
-keep one licensing position. **A contribution is accepted only when you state,
+The project's copyright is held entirely by its author, so that the author can
+decide its licence later. **A contribution is accepted only when you state,
 in the pull request, that you assign the copyright of it to the project's
 author, or license it to the author under terms that allow relicensing**
 (for example an unrestricted licence grant). Without that statement a
