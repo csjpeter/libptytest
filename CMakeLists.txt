@@ -3,7 +3,7 @@
 # Created: 2026-10-03
 # Build, install and package rules of libptytest: library, man pages, CPack.
 cmake_minimum_required(VERSION 3.20)
-project(libptytest VERSION 0.1.4 LANGUAGES C)
+project(libptytest VERSION 0.1.5 LANGUAGES C)
 
 # ---------------------------------------------------------------------------
 # Version
