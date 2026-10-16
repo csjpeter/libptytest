@@ -546,31 +546,44 @@ clean() {
 # record; "timing" prints the gate line from it.  Nothing is estimated.
 # ---------------------------------------------------------------------------
 
+# gate_record: prints the log lines a gate line is made from: the latest
+# successful run of each of check, package and install (install-deb).  This
+# is the measured record; two reports are the same when their records are.
+gate_record() {
+    [ -s "$TIMING_LOG" ] || return 0
+    awk '
+        $4 == "ok" && ($2 == "check" || $2 == "package" || $2 == "install" || $2 == "install-deb") {
+            v = ($2 == "install-deb") ? "install" : $2
+            last[v] = $0
+        }
+        END {
+            split("check package install", order, " ")
+            for (i = 1; i <= 3; i++) if (order[i] in last) print last[order[i]]
+        }' "$TIMING_LOG"
+}
+
 # gate_line: prints "Gate: <total>s (check <s>s, package <s>s, install <s>s)"
-# from the latest successful run of each of those verbs; a part with no
-# record is left out.  With none of them recorded: "Gate: not measured",
-# exit status 1.
+# from the record; a part with no record is left out.  With nothing recorded:
+# "Gate: not measured", exit status 1.
 gate_line() {
     local line=""
-    if [ -s "$TIMING_LOG" ]; then
-        line="$(awk '
-            $4 == "ok" && ($2 == "check" || $2 == "package" || $2 == "install" || $2 == "install-deb") {
-                v = ($2 == "install-deb") ? "install" : $2
-                secs[v] = $3; sub("s$", "", secs[v])
-            }
-            END {
-                n = 0; total = 0; parts = ""
-                split("check package install", order, " ")
-                for (i = 1; i <= 3; i++) {
-                    v = order[i]
-                    if (v in secs) {
-                        parts = parts (n ? ", " : "") v " " secs[v] "s"
-                        total += secs[v]; n++
-                    }
+    line="$(gate_record | awk '
+        {
+            v = ($2 == "install-deb") ? "install" : $2
+            secs[v] = $3; sub("s$", "", secs[v])
+        }
+        END {
+            n = 0; total = 0; parts = ""
+            split("check package install", order, " ")
+            for (i = 1; i <= 3; i++) {
+                v = order[i]
+                if (v in secs) {
+                    parts = parts (n ? ", " : "") v " " secs[v] "s"
+                    total += secs[v]; n++
                 }
-                if (n) printf "Gate: %ds (%s)\n", total, parts
-            }' "$TIMING_LOG")"
-    fi
+            }
+            if (n) printf "Gate: %ds (%s)\n", total, parts
+        }')"
     if [ -z "$line" ]; then
         echo "Gate: not measured"
         return 1
@@ -578,14 +591,32 @@ gate_line() {
     echo "$line"
 }
 
-# run_timing [KEY-N]
+# run_timing [KEY-N]: prints the gate line; with a key posts it as a comment
+# unless the measured record is the one last posted for that key (kept in
+# timing.posted next to the log).  A re-run verb or newer code gives a new
+# record, so its line is posted even when the text is identical.
 run_timing() {
-    local line rc=0
+    local line rc=0 record sum posted tmp
     line="$(gate_line)" || rc=$?
     echo "$line"
     if [ -n "${1:-}" ]; then
+        record="$(gate_record)"
+        sum="$(printf '%s\n' "$record" | cksum | awk '{print $1 "-" $2}')"
+        posted="$(dirname "$TIMING_LOG")/timing.posted"
+        if [ -n "$record" ] && [ -f "$posted" ] \
+           && grep -qxF "$1 $sum" "$posted"; then
+            echo "timing: record already posted for $1; nothing posted"
+            return "$rc"
+        fi
         # A key with nothing measured still gets the honest line.
         "${ISSUE_CLI:-issue-cli}" issue comment "$1" "$line" || return 1
+        if [ -n "$record" ]; then
+            mkdir -p "$(dirname "$posted")"
+            tmp="$posted.$$"
+            { [ ! -f "$posted" ] || grep -v "^$1 " "$posted" || [ $? -eq 1 ]; 
+              printf '%s %s\n' "$1" "$sum"; } > "$tmp"
+            mv "$tmp" "$posted"
+        fi
     fi
     return "$rc"
 }
@@ -608,8 +639,12 @@ case "$cmd" in
             t_state=ok
             [ "$t_rc" -eq 0 ] || t_state=fail
             mkdir -p "$(dirname "$TIMING_LOG")"
-            printf '%s %s %ss %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$cmd" \
-                   "$((t_end - t_start))" "$t_state" >> "$TIMING_LOG"
+            t_commit="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD || echo unknown)"
+            if [ -n "$(git -C "$SCRIPT_DIR" status --porcelain)" ]; then
+                t_commit="$t_commit+"
+            fi
+            printf '%s %s %ss %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$cmd" \
+                   "$((t_end - t_start))" "$t_state" "$t_commit" >> "$TIMING_LOG"
             exit "$t_rc"
         fi
         unset MANAGE_INNER
