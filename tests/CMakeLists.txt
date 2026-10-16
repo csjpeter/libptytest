@@ -95,3 +95,11 @@ endforeach()
 target_compile_definitions(pty_test_tiny_menu PRIVATE
     PTY_TINY_MENU="$<TARGET_FILE:pty_helper_tiny-menu>")
 add_dependencies(pty_test_tiny_menu pty_helper_tiny-menu)
+
+# --- functional: the library's capabilities, driven from outside -----------
+# The shared library, a real child and a real PTY; the map of capability to
+# test is docs/functional-coverage.md (tools/check-functional-coverage.sh).
+project_test(functional test_api SOURCES functional/test_api.c LIBS ptytest)
+target_compile_definitions(functional_test_api PRIVATE
+    PTY_FIXTURE="$<TARGET_FILE:pty_helper_pty-fixture>")
+add_dependencies(functional_test_api pty_helper_pty-fixture)

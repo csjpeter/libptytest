@@ -27,6 +27,8 @@ human.
 ```bash
 ./manage.sh test       # unit tests (ASAN + UBSan) — run most often
 ./manage.sh pty        # PTY tests (ASAN + UBSan)
+./manage.sh functional # functional tests: public API, real child, real PTY
+./manage.sh functional-coverage # every exported function/macro has a row in docs/functional-coverage.md
 ./manage.sh check      # every gate: licence, private-names, test-bins, timing-log, unit, pty, valgrind, coverage, package (+lintian), consumer, package-output
 build/_test/tests/unit/bin/test_screen <substring>   # one test
 ```
@@ -50,6 +52,11 @@ Tests are declared one per line in `tests/CMakeLists.txt` as
   unit tests link the static library to reach `pty_internal.h`.
 
 ## Rules specific to this project
+
+- **Every public function and assertion macro has a row in
+  `docs/functional-coverage.md`** naming the functional test that drives it
+  (`tests/functional` or `tests/pty`); `tools/check-functional-coverage.sh`
+  fails otherwise. A new capability brings its row and test in the same commit.
 
 - **The emulator's limits are the tests' limits.** Any sequence added to or
   dropped from `pty_screen.c` is added to or dropped from the EMULATOR section

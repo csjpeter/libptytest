@@ -57,6 +57,11 @@ Commands:
                         that declared tests and build/tests/*/bin/ agree
   licence               Self-test tools/check-licence.sh, then check that every
                         file and declaration says GPL-3.0-only
+  functional            Functional tests (tests/functional): the library through its
+                        shared interface, a real child and a real PTY, ASAN + UBSan
+  functional-coverage   Self-test tools/check-functional-coverage.sh, then fail if an
+                        exported function or macro has no row in the map
+                        docs/functional-coverage.md
   private-names         Self-test tools/check-private-names.sh, then fail if a
                         tracked file names the owner's private domain
   check                 Every gate, with a summary to compare against CI; includes
@@ -195,6 +200,14 @@ run_label() {
 
 run_unit() { run_label unit "$@"; }
 run_pty()  { run_label pty "$@"; }
+run_functional() { run_label functional "$@"; }
+
+# functional-coverage: the checker must be able to fail (its self-test), then
+# the map (policies/testing-model.md, "Every capability has a functional test").
+run_functional_coverage() {
+    "$SCRIPT_DIR/tools/check-functional-coverage.sh" --self-test
+    "$SCRIPT_DIR/tools/check-functional-coverage.sh"
+}
 
 run_valgrind() {
     if ! command -v valgrind >/dev/null; then
@@ -487,7 +500,7 @@ run_check() {
     local logdir="$BUILD_DIR/_logs"
     mkdir -p "$logdir"
 
-    local gates="licence private-names test-bins timing-log unit pty valgrind coverage package consumer package-output"
+    local gates="licence private-names functional-coverage test-bins timing-log unit pty functional valgrind coverage package consumer package-output"
     local -A result
     local g rc failed=0
     for g in $gates; do
@@ -629,8 +642,8 @@ cmd="${1:-help}"
 # read here.  MANAGE_INNER marks that child for one level only; the verbs it
 # starts (check runs its gates this way) are timed in turn.
 case "$cmd" in
-    deps|build|debug|test|pty|coverage|valgrind|consumer|licence|private-names|\
-    test-bins|timing-log|check|package)
+    deps|build|debug|test|pty|functional|functional-coverage|coverage|valgrind|consumer|\
+    licence|private-names|test-bins|timing-log|check|package)
         if [ -z "${MANAGE_INNER:-}" ]; then
             t_start="$(date +%s)"
             t_rc=0
@@ -657,6 +670,8 @@ case "$cmd" in
     debug)     build_debug ;;
     test)      run_unit "$@" ;;
     pty)       run_pty "$@" ;;
+    functional) run_functional "$@" ;;
+    functional-coverage) run_functional_coverage ;;
     coverage)  run_coverage ;;
     valgrind)  run_valgrind ;;
     consumer)  run_consumer ;;
