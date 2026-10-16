@@ -16,7 +16,7 @@ MANAGE="$ROOT/manage.sh"
 
 tmp="$(mktemp -d "/tmp/check-timing-$$-XXXXXX")"
 case "$tmp" in /tmp/check-timing-*) ;; *) echo "ERROR: unsafe path: '$tmp'" >&2; exit 1 ;; esac
-trap 'rm -f "$tmp/timing.log" "$tmp/issue-cli" "$tmp/args" "$tmp/out"; rmdir "$tmp"' EXIT
+trap 'rm -f "$tmp/timing.log" "$tmp/timing.posted" "$tmp/count" "$tmp/issue-cli" "$tmp/args" "$tmp/out"; rmdir "$tmp"' EXIT
 
 export MANAGE_TIMING_LOG="$tmp/timing.log"
 fails=0
@@ -75,13 +75,32 @@ want="$(printf 'issue\ncomment\nKEY-1\nGate: 113s (check 90s, package 20s, insta
 : > "$MANAGE_TIMING_LOG"
 "$MANAGE" licence > "$tmp/out"
 [ "$(wc -l < "$MANAGE_TIMING_LOG")" -eq 1 ] || fail "licence: expected one log line"
-grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z licence [0-9]+s ok$' "$MANAGE_TIMING_LOG" \
+grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z licence [0-9]+s ok [0-9a-f]+\+?$' "$MANAGE_TIMING_LOG" \
     || fail "licence: log line has the wrong shape: $(cat "$MANAGE_TIMING_LOG")"
 rc=0
 "$MANAGE" package bogus > "$tmp/out" 2>&1 || rc=$?
 [ "$rc" -ne 0 ] || fail "package bogus: exit status was 0"
-grep -Eq ' package [0-9]+s fail$' "$MANAGE_TIMING_LOG" \
+grep -Eq ' package [0-9]+s fail [0-9a-f]+\+?$' "$MANAGE_TIMING_LOG" \
     || fail "package bogus: no fail line: $(cat "$MANAGE_TIMING_LOG")"
+
+# 8. Posting: the same record is posted once; a newer record is posted again
+# even when the Gate text is identical; the line keeps its exact shape.
+cat > "$tmp/issue-cli" <<STUB
+#!/usr/bin/env bash
+echo "\$3|\$4" >> "$tmp/count"
+STUB
+printf '2026-10-11T10:00:00Z check 100s ok abc1234\n' > "$MANAGE_TIMING_LOG"
+ISSUE_CLI="$tmp/issue-cli" "$MANAGE" timing KEY-2 > "$tmp/out"
+ISSUE_CLI="$tmp/issue-cli" "$MANAGE" timing KEY-2 > "$tmp/out" || fail "repeat: exit status non-zero"
+[ "$(wc -l < "$tmp/count")" -eq 1 ] || fail "same record posted twice: $(tr '\n' ' ' < "$tmp/count")"
+grep -q 'nothing posted' "$tmp/out" || fail "repeat: no notice of skipping"
+printf '2026-10-11T10:30:00Z check 100s ok def5678\n' >> "$MANAGE_TIMING_LOG"
+ISSUE_CLI="$tmp/issue-cli" "$MANAGE" timing KEY-2 > "$tmp/out"
+[ "$(wc -l < "$tmp/count")" -eq 2 ] || fail "newer record with same text not posted"
+ISSUE_CLI="$tmp/issue-cli" "$MANAGE" timing KEY-3 > "$tmp/out"
+[ "$(wc -l < "$tmp/count")" -eq 3 ] || fail "other key not posted"
+
+[ "$(grep -c '^KEY-2 ' "$tmp/timing.posted")" -eq 1 ] || fail "timing.posted keeps more than one record per key"
 
 if [ "$fails" -ne 0 ]; then
     echo "check-timing: $fails case(s) failed" >&2
