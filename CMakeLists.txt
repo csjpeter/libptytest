@@ -9,14 +9,17 @@ project(libptytest VERSION 0.1.5 LANGUAGES C)
 # Version
 #
 # project(... VERSION ...) above is the single source: there is no VERSION
-# file and no version written into any packaging metadata.  A build between
-# releases is refined with the number of commits since the last tag, so
-# successive builds sort correctly for apt.  No "-" in the result: in a
-# Debian version the last "-" separates the upstream version from the
-# Debian revision.  See policies/packaging-and-release-model.md.
+# file and no version written into any packaging metadata.  The package
+# version is project_version.<total commit count>: a tag takes no part, so
+# successive builds always sort upward for apt.  After a package build,
+# ./manage.sh tag makes the annotated tag v<version> on the built commit.
+# No "-" in the result: in a Debian version the last "-" separates the
+# upstream version from the Debian revision.  See
+# policies/packaging-and-release-model.md, "Deriving the version".
 # ---------------------------------------------------------------------------
-set(PTYTEST_VERSION "${PROJECT_VERSION}")
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/ptytest_version.cmake")
 set(PTYTEST_GIT_COMMIT "unknown")
+ptytest_derive_version(PTYTEST_VERSION "${PROJECT_VERSION}" "${CMAKE_CURRENT_SOURCE_DIR}")
 
 find_package(Git QUIET)
 if(Git_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
@@ -29,30 +32,8 @@ if(Git_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
     if(_ptytest_sha_rc EQUAL 0 AND _ptytest_sha)
         set(PTYTEST_GIT_COMMIT "${_ptytest_sha}")
     endif()
-
-    # A repository without a tag yet is a normal state, not an error, so
-    # the tag list is asked for rather than "git describe" failing on it.
-    execute_process(
-        COMMAND "${GIT_EXECUTABLE}" tag --list "v*" --sort=-v:refname --merged HEAD
-        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-        OUTPUT_VARIABLE _ptytest_tags
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        RESULT_VARIABLE _ptytest_tags_rc)
-    if(_ptytest_tags_rc EQUAL 0 AND _ptytest_tags)
-        string(REPLACE "\n" ";" _ptytest_tags "${_ptytest_tags}")
-        list(GET _ptytest_tags 0 _ptytest_tag)
-        execute_process(
-            COMMAND "${GIT_EXECUTABLE}" rev-list --count "${_ptytest_tag}..HEAD"
-            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-            OUTPUT_VARIABLE _ptytest_commits
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-            RESULT_VARIABLE _ptytest_commits_rc)
-        if(_ptytest_commits_rc EQUAL 0 AND _ptytest_commits
-           AND NOT _ptytest_commits STREQUAL "0")
-            set(PTYTEST_VERSION "${PROJECT_VERSION}.${_ptytest_commits}")
-        endif()
-    endif()
 endif()
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/version.txt" "${PTYTEST_VERSION}\n")
 
 string(TIMESTAMP PTYTEST_BUILD_DATE "%Y-%m-%dT%H:%M:%SZ" UTC)
 string(TIMESTAMP PTYTEST_BUILD_STAMP "%Y%m%dT%H%M%S" UTC)
