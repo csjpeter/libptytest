@@ -69,6 +69,12 @@ Commands:
   package [deb|rpm|all] Build the packages into build/packages/ (emptied first;
                         left empty, exit non-zero, if the build, lintian or the
                         upward-only dependency check fails)
+  version               Self-test tools/check-version.sh: the package version is
+                        project_version.<commit count>, a tag takes no part
+  tag                   After a package build: the annotated tag v<package version>
+                        on the built commit (message: the ticket keys since the
+                        previous tag), pushed to origin; the same tag at the same
+                        commit again is fine
   timing-log            Self-test tools/check-timing.sh: the timing record and
                         the gate line, including "not measured"
   timing [KEY-N]        Print the gate line from build/timing.log; with a key,
@@ -375,6 +381,40 @@ do_package() {
     find "$PACKAGE_DIR" -mindepth 1 | sort
 }
 
+# tag
+#
+# The tag follows the package version and never decides it: v<version> is
+# the exact Debian version the build carries (build/version.txt, written by
+# CMake from project_version.<commit count>), on the commit that was built.
+# The message lists the ticket keys named in the commits since the previous
+# tag.  A tag that exists at HEAD is left as it is; one at another commit is
+# an error, not moved.
+do_tag() {
+    local version tag head prev range keys
+    if [ ! -f "$BUILD_DIR/version.txt" ]; then
+        echo "tag: $BUILD_DIR/version.txt missing; run './manage.sh package' first" >&2
+        return 1
+    fi
+    version="$(cat "$BUILD_DIR/version.txt")"
+    tag="v$version"
+    head="$(git -C "$SCRIPT_DIR" rev-parse HEAD)" || return 1
+    if git -C "$SCRIPT_DIR" rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+        if [ "$(git -C "$SCRIPT_DIR" rev-parse "$tag^{commit}")" != "$head" ]; then
+            echo "tag: $tag exists at another commit than HEAD $head" >&2
+            return 1
+        fi
+        echo "tag: $tag already at HEAD"
+    else
+        prev="$(git -C "$SCRIPT_DIR" tag --list 'v*' --merged HEAD --sort=-v:refname | head -n 1)"
+        range="HEAD"
+        [ -z "$prev" ] || range="$prev..HEAD"
+        keys="$(git -C "$SCRIPT_DIR" log --format=%B "$range" \
+                | { grep -oE '[A-Z]+-[0-9]+' || [ $? -eq 1 ]; } | sort -u | tr '\n' ' ')"
+        git -C "$SCRIPT_DIR" tag -a "$tag" -m "libptytest $version: ${keys:-no ticket keys}" || return 1
+    fi
+    git -C "$SCRIPT_DIR" push origin "refs/tags/$tag"
+}
+
 package_failed() {
     echo "package: $1 failed; $PACKAGE_DIR is left empty" >&2
     if ! empty_packages_dir; then
@@ -500,7 +540,7 @@ run_check() {
     local logdir="$BUILD_DIR/_logs"
     mkdir -p "$logdir"
 
-    local gates="licence private-names functional-coverage test-bins timing-log unit pty functional valgrind coverage package consumer package-output"
+    local gates="licence private-names functional-coverage test-bins version timing-log unit pty functional valgrind coverage package consumer package-output"
     local -A result
     local g rc failed=0
     for g in $gates; do
@@ -643,7 +683,7 @@ cmd="${1:-help}"
 # starts (check runs its gates this way) are timed in turn.
 case "$cmd" in
     deps|build|debug|test|pty|functional|functional-coverage|coverage|valgrind|consumer|\
-    licence|private-names|test-bins|timing-log|check|package)
+    licence|private-names|test-bins|version|timing-log|check|package)
         if [ -z "${MANAGE_INNER:-}" ]; then
             t_start="$(date +%s)"
             t_rc=0
@@ -680,6 +720,8 @@ case "$cmd" in
     test-bins) run_test_bins ;;
     check)     run_check ;;
     timing)    run_timing "$@" ;;
+    version)   "$SCRIPT_DIR/tools/check-version.sh" ;;
+    tag)       do_tag ;;
     timing-log) "$SCRIPT_DIR/tools/check-timing.sh" ;;
     package)   do_package "${1:-deb}" ;;
     clean)     clean ;;
