@@ -20,8 +20,6 @@ human.
 - `project-boundaries-model.md` — write only inside this directory; working
   files under `build/`
 
-`requirements/`, if it exists, is human-authored and never edited by an agent.
-
 ## Commands
 
 ```bash
