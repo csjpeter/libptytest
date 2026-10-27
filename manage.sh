@@ -350,18 +350,18 @@ run_suites() {
 # Tests
 # ---------------------------------------------------------------------------
 
-# run_label <label> [-R regex]
+# run_label <verb> <ctest label = category> [-R regex]
 run_label() {
-    local label="$1"
-    shift
+    local verb="$1" label="$2"
+    shift 2
     SUITE_FILTER=""
     case "${1:-}" in
         "") ;;
-        -R) [ $# -eq 2 ] || { echo "$label: -R takes one regex" >&2; return 2; }
+        -R) [ $# -eq 2 ] || { echo "$verb: -R takes one regex" >&2; return 2; }
             SUITE_FILTER="$2" ;;
-        *)  echo "$label: expected nothing or -R REGEX, got '$*'" >&2; return 2 ;;
+        *)  echo "$verb: expected nothing or -R REGEX, got '$*'" >&2; return 2 ;;
     esac
-    result_begin "$label"
+    result_begin "$verb"
     build_debug_into "$BUILD_DIR_TEST" || return 1
     # Evidence of an earlier run would be taken for this run's.
     if [ -d "$SCRIPT_DIR/build/_test/evidence" ]; then
@@ -382,9 +382,9 @@ run_label() {
     return "$rc"
 }
 
-run_unit() { run_label unit "$@"; }
-run_pty()  { run_label pty "$@"; }
-run_functional() { run_label functional "$@"; }
+run_unit() { run_label test unit "$@"; }
+run_pty()  { run_label pty pty "$@"; }
+run_functional() { run_label functional functional "$@"; }
 
 # functional-coverage: the checker must be able to fail (its self-test), then
 # the map (policies/testing-model.md, "Every capability has a functional test").
