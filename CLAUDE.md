@@ -29,7 +29,7 @@ human.
 ./manage.sh pty        # PTY tests (ASAN + UBSan)
 ./manage.sh functional # functional tests: public API, real child, real PTY
 ./manage.sh functional-coverage # every exported function/macro has a row in docs/functional-coverage.md
-./manage.sh check      # every gate: licence, private-names, test-bins, version, timing-log, unit, pty, valgrind, coverage, package (+lintian), consumer, package-output
+./manage.sh check      # every gate: licence, private-names, test-bins, version, timing-log, test-base-check, unit, pty, valgrind, coverage, package (+lintian), consumer, package-output
 build/_test/tests/unit/bin/test_screen <substring>   # one test
 ```
 
