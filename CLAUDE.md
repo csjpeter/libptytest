@@ -28,7 +28,7 @@ human.
 ./manage.sh functional # functional tests: public API, real child, real PTY
 ./manage.sh functional-coverage # every exported function/macro has a row in docs/functional-coverage.md
 ./manage.sh result-format # self-test of the suite runner and the result file, then build/result/*.result and build/coverage/{unit,external}
-./manage.sh check      # every gate: licence, private-names, test-bins, version, tag-build-test, timing-log, unit, pty, valgrind, coverage, result-format, package (+lintian), consumer, package-output
+./manage.sh check      # every gate: licence, private-names, test-bins, version, tag-build-test, timing-log, test-base-check, unit, pty, valgrind, coverage, result-format, package (+lintian), consumer, package-output
 build/_test/tests/unit/bin/test_screen <substring>   # one test
 ```
 

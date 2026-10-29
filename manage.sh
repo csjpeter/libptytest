@@ -55,7 +55,10 @@ usage() {
 Usage: ./manage.sh <command> [args]
 
 Commands:
-  deps                  Install build and test dependencies (apt or dnf; needs root)
+  deps                  Install build and test dependencies (apt or dnf; needs root);
+                        includes test-base
+  test-base             Create or refresh the test base containers in
+                        /var/lib/lxc-bases (this project has none: says so, exit 0)
   build                 Release build (build/)
   debug                 Debug build with ASAN + UBSan (build/_debug)
   test [-R REGEX]       Unit tests, ASAN + UBSan -- the command run most often
@@ -81,6 +84,8 @@ Commands:
   package [deb|rpm|all] Build the packages into build/packages/ (emptied first;
                         left empty, exit non-zero, if the build, lintian or the
                         upward-only dependency check fails)
+  test-base-check       Self-test tools/check-test-base.sh: test-base works alone,
+                        is idempotent, is listed in help and run by deps
   version               Self-test tools/check-version.sh: the package version is
                         project_version.<commit count>, a tag takes no part
   tag-build VERSION     The annotated tag vVERSION on HEAD (message: the ticket
@@ -117,13 +122,21 @@ APT_DEPS="build-essential cmake pkg-config git valgrind lcov lintian dpkg-dev
 DNF_DEPS="gcc make cmake pkgconf-pkg-config git valgrind lcov rpm-build
           dpkg glibc-langpack-en"
 
+# test-base: the project's test base containers in /var/lib/lxc-bases
+# (policies/agent-container-model.md, section 4a).  libptytest tests run a
+# real child on a real PTY on the host and need no container, so it has no
+# base; the verb says so and succeeds.  deps includes it.
+run_test_base() {
+    echo "test-base: libptytest has no test base containers (nothing in /var/lib/lxc-bases to create or refresh)"
+}
+
 install_deps() {
     if command -v apt-get >/dev/null; then
         # shellcheck disable=SC2086
-        apt-get update && apt-get install -y $APT_DEPS
+        apt-get update && apt-get install -y $APT_DEPS && run_test_base
     elif command -v dnf >/dev/null; then
         # shellcheck disable=SC2086
-        dnf install -y $DNF_DEPS
+        dnf install -y $DNF_DEPS && run_test_base
     else
         echo "deps: no apt-get or dnf; install by hand:" >&2
         echo "  a C11 compiler, cmake >= 3.20, pkg-config, valgrind, lcov," >&2
@@ -750,7 +763,7 @@ run_check() {
     local logdir="$BUILD_DIR/_logs"
     mkdir -p "$logdir"
 
-    local gates="licence private-names functional-coverage test-bins version tag-build-test timing-log unit pty functional valgrind coverage result-format package consumer package-output"
+    local gates="licence private-names functional-coverage test-bins version tag-build-test timing-log test-base-check unit pty functional valgrind coverage result-format package consumer package-output"
     local -A result
     local g rc failed=0
     for g in $gates; do
@@ -895,8 +908,8 @@ cmd="${1:-help}"
 # read here.  MANAGE_INNER marks that child for one level only; the verbs it
 # starts (check runs its gates this way) are timed in turn.
 case "$cmd" in
-    deps|build|debug|test|pty|functional|functional-coverage|coverage|valgrind|consumer|\
-    licence|private-names|test-bins|version|tag-build-test|timing-log|result-format|check|package)
+    deps|test-base|build|debug|test|pty|functional|functional-coverage|coverage|valgrind|consumer|\
+    licence|private-names|test-bins|version|tag-build-test|timing-log|test-base-check|result-format|check|package)
         if [ -z "${MANAGE_INNER:-}" ]; then
             t_start="$(date +%s)"
             t_rc=0
@@ -919,6 +932,8 @@ esac
 
 case "$cmd" in
     deps)      install_deps ;;
+    test-base) run_test_base ;;
+    test-base-check) "$SCRIPT_DIR/tools/check-test-base.sh" ;;
     build)     build_release ;;
     debug)     build_debug ;;
     test)      run_unit "$@" ;;

@@ -132,7 +132,7 @@ cmake/          package config, pkg-config template, .deb build metadata
 ## Development
 
 ```sh
-./manage.sh deps        # build and test dependencies (root)
+./manage.sh deps        # build and test dependencies (root); includes test-base
 ./manage.sh test        # unit tests, ASAN + UBSan
 ./manage.sh pty         # PTY tests, ASAN + UBSan
 ./manage.sh valgrind    # every unit suite under Valgrind, Release build
