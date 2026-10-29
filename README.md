@@ -135,12 +135,13 @@ cmake/          package config, pkg-config template, .deb build metadata
 ./manage.sh deps        # build and test dependencies (root); includes test-base
 ./manage.sh test        # unit tests, ASAN + UBSan
 ./manage.sh pty         # PTY tests, ASAN + UBSan
-./manage.sh valgrind    # all tests under Valgrind, Release build
+./manage.sh valgrind    # every unit suite under Valgrind, Release build
 ./manage.sh coverage    # src/ line coverage: unit alone >= 80%, pty tests >= 80%, all >= 90%
 ./manage.sh package     # build/packages/: exactly this run's .debs, lintian clean
 ./manage.sh consumer    # build and run the example against the .deb content
 ./manage.sh licence     # SPDX header in every file, one licence everywhere
 ./manage.sh check       # all of the above, with a summary
+./manage.sh result-format  # the runner and build/result/<verb>.result (test, functional, pty, valgrind, coverage), the coverage counters
 ./manage.sh timing [KEY-N]  # gate line from build/timing.log (every verb appends its seconds); with a key, comments it on the ticket
 ```
 

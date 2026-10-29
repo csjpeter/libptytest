@@ -12,7 +12,7 @@ project(libptytest VERSION 0.1.5 LANGUAGES C)
 # file and no version written into any packaging metadata.  The package
 # version is project_version.<total commit count>: a tag takes no part, so
 # successive builds always sort upward for apt.  After a package build,
-# ./manage.sh tag makes the annotated tag v<version> on the built commit.
+# ./manage.sh tag-build VERSION makes the annotated tag vVERSION locally.
 # No "-" in the result: in a Debian version the last "-" separates the
 # upstream version from the Debian revision.  See
 # policies/packaging-and-release-model.md, "Deriving the version".

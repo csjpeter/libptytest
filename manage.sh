@@ -18,10 +18,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="$SCRIPT_DIR/build"
 BUILD_DIR_DEBUG="$BUILD_DIR/_debug"
 BUILD_DIR_TEST="$BUILD_DIR/_test"
-BUILD_DIR_COVERAGE="$BUILD_DIR/_coverage"
+# The instrumented trees of the coverage verb, one per scope, with their raw
+# counters; the integrator reads them (policies/manage-sh-model.md).
+BUILD_DIR_COVERAGE="$BUILD_DIR/coverage"
 BUILD_DIR_VALGRIND="$BUILD_DIR/_valgrind"
 BUILD_DIR_CONSUMER="$BUILD_DIR/_consumer"
 PACKAGE_DIR="$BUILD_DIR/packages"
+
+# build/result/<verb>.result, written by test, functional, pty, valgrind and
+# coverage (policies/manage-sh-model.md, "The integrator reads the output").
+# The override exists so that tools/check-result.sh can test the runner
+# without touching the real record.
+RESULT_DIR="${MANAGE_RESULT_DIR:-$BUILD_DIR/result}"
+
+# A suite that runs longer than this is a timeout (seconds).
+SUITE_TIMEOUT="${MANAGE_SUITE_TIMEOUT:-120}"
 
 # One line per run of a verb: "<UTC time> <verb> <seconds>s <ok|fail>".  The
 # override exists so that tools/check-timing.sh can test the record without
@@ -50,17 +61,18 @@ Commands:
                         /var/lib/lxc-bases (this project has none: says so, exit 0)
   build                 Release build (build/)
   debug                 Debug build with ASAN + UBSan (build/_debug)
-  test [ctest args]     Unit tests, ASAN + UBSan -- the command run most often
-  pty [ctest args]      PTY tests: real programs through a real PTY, ASAN + UBSan
-  coverage              Line coverage of src/: unit alone, pty tests alone, and
-                        all together; fails if any is below its threshold
-  valgrind              Unit and PTY tests under Valgrind on a clean Release build
+  test [-R REGEX]       Unit tests, ASAN + UBSan -- the command run most often
+  pty [-R REGEX]        PTY tests: real programs through a real PTY, ASAN + UBSan
+  coverage              Line coverage of src/: unit alone, functional+pty tests
+                        alone, and all together; fails if any is below its
+                        threshold; leaves the counters in build/coverage/{unit,external}
+  valgrind              Every unit suite under Valgrind on a clean Release build
   consumer              Build and run the example against the built .deb packages
   test-bins             Self-test tools/check-test-bins.sh, then build and check
                         that declared tests and build/tests/*/bin/ agree
   licence               Self-test tools/check-licence.sh, then check that every
                         file and declaration says GPL-3.0-only
-  functional            Functional tests (tests/functional): the library through its
+  functional [-R REGEX] Functional tests (tests/functional): the library through its
                         shared interface, a real child and a real PTY, ASAN + UBSan
   functional-coverage   Self-test tools/check-functional-coverage.sh, then fail if an
                         exported function or macro has no row in the map
@@ -76,10 +88,15 @@ Commands:
                         is idempotent, is listed in help and run by deps
   version               Self-test tools/check-version.sh: the package version is
                         project_version.<commit count>, a tag takes no part
-  tag                   After a package build: the annotated tag v<package version>
-                        on the built commit (message: the ticket keys since the
-                        previous tag), pushed to origin; the same tag at the same
-                        commit again is fine
+  tag-build VERSION     The annotated tag vVERSION on HEAD (message: the ticket
+                        keys since the previous tag); never pushes (the host
+                        pushes it with gh-push); the same tag at the same
+                        commit again is fine.  package never tags or pushes
+  tag-build-test        Self-test tools/check-tag-build.sh: tag-build tags and
+                        pushes nothing, and package has no tag or push in it
+  result-format         Self-test tools/check-result.sh (the suite runner and the
+                        result file), then check build/result/*.result and the
+                        coverage counters left by the verbs run before
   timing-log            Self-test tools/check-timing.sh: the timing record and
                         the gate line, including "not measured"
   timing [KEY-N]        Print the gate line from build/timing.log; with a key,
@@ -89,6 +106,7 @@ Commands:
 
 Tests are declared in tests/CMakeLists.txt and built into
 build/tests/<category>/bin/<name> (here: build/_test/tests/... for test/pty).
+test, functional, pty, valgrind and coverage write build/result/<verb>.result.
 One suite, or one test of a suite:
   ./manage.sh test -R test_screen
   build/_test/tests/unit/bin/test_screen test_utf8   (substring filter; -l lists)
@@ -189,14 +207,177 @@ build_debug() {
 }
 
 # ---------------------------------------------------------------------------
+# The result file and the suite runner
+#
+# A verb that runs suites calls result_begin first.  From then on every exit
+# path (success, failure, a failed build, a signal) writes the final
+# build/result/<verb>.result from the state the runner collected
+# (policies/manage-sh-model.md, "The result file").
+# ---------------------------------------------------------------------------
+
+R_VERB=""
+R_START=0
+R_STARTED=""
+R_SUITES=()
+R_SCOPES=()
+R_ASSERT=0
+R_FAILED=0
+R_BAD=0
+
+result_commit() {
+    local c
+    c="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD)" || c=unknown
+    if [ -n "$(git -C "$SCRIPT_DIR" status --porcelain)" ]; then
+        c="$c+"
+    fi
+    echo "$c"
+}
+
+# result_write <status> <exit code>: the file, whole, through a rename.
+result_write() {
+    local file="$RESULT_DIR/$R_VERB.result" tmp
+    tmp="$file.$$"
+    {
+        echo "format: manage-result/1"
+        echo "verb: $R_VERB"
+        echo "commit: $(result_commit)"
+        echo "started: $R_STARTED"
+        echo "seconds: $(( $(date +%s) - R_START ))"
+        echo "exit: $2"
+        echo "status: $1"
+        echo "suites: ${#R_SUITES[@]}"
+        echo "assertions: $R_ASSERT"
+        echo "failed: $R_FAILED"
+        local i
+        for ((i = 0; i < ${#R_SCOPES[@]}; i++)); do echo "${R_SCOPES[$i]}"; done
+        for ((i = 0; i < ${#R_SUITES[@]}; i++)); do echo "${R_SUITES[$i]}"; done
+    } > "$tmp" && mv "$tmp" "$file"
+}
+
+# The EXIT trap: the final file, on every way out.
+result_end() {
+    local rc=$?
+    trap - EXIT
+    local status=pass
+    if [ "$rc" -ne 0 ] || [ "$R_BAD" -ne 0 ]; then
+        status=fail
+        [ "${#R_SUITES[@]}" -gt 0 ] || status=error
+    elif [ "${#R_SUITES[@]}" -eq 0 ]; then
+        # Exit 0 with no suite run: the tests do not exist.
+        status=error
+        rc=1
+    fi
+    result_write "$status" "$rc" || echo "result: cannot write $RESULT_DIR/$R_VERB.result" >&2
+    exit "$rc"
+}
+
+# result_begin <verb>: delete the old file, write "running", arm the trap.
+result_begin() {
+    R_VERB="$1"
+    R_START="$(date +%s)"
+    R_STARTED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    R_SUITES=()
+    R_SCOPES=()
+    R_ASSERT=0
+    R_FAILED=0
+    R_BAD=0
+    mkdir -p "$RESULT_DIR"
+    rm -f "$RESULT_DIR/$R_VERB.result"
+    trap result_end EXIT
+    trap 'exit 143' TERM
+    trap 'exit 130' INT
+    result_write running 0
+}
+
+# run_suites <name prefix> <build dir> <categories> [wrapper, ; separated]
+#
+# Runs every executable in <build dir>/tests/<category>/bin/ with no
+# arguments, under a timeout, each to its end: a failed suite does not stop
+# the next, it makes the return status non-zero.  A suite's assertion counts
+# are read from the runner's own summary line.  No skip: exit 77, a missing
+# count and a missing suite directory are failures.
+run_suites() {
+    local prefix="$1" dir="$2" cats="$3" rc=0
+    local -a wrapper=()
+    if [ -n "${4:-}" ]; then
+        IFS=';' read -r -a wrapper <<< "$4"
+    fi
+    local cat bin name log t0 code status counts a f
+    mkdir -p "$RESULT_DIR/$R_VERB.logs"
+    for cat in $cats; do
+        for bin in "$dir/tests/$cat/bin/"*; do
+            [ -f "$bin" ] && [ -x "$bin" ] || continue
+            name="$(basename "$bin")"
+            if [ -n "${SUITE_FILTER:-}" ] && ! [[ "$name" =~ $SUITE_FILTER ]]; then
+                continue
+            fi
+            log="$RESULT_DIR/$R_VERB.logs/${prefix//\//-}$name.log"
+            t0="$(date +%s)"
+            code=0
+            echo "=== suite $prefix$name"
+            ( cd "$dir/tests" && exec timeout "$SUITE_TIMEOUT" \
+                  ${wrapper[@]+"${wrapper[@]}"} "$bin" ) > "$log" 2>&1 || code=$?
+            cat "$log"
+            counts="$(awk '
+                /^Assertions run: *[0-9]+/ { sub(/^Assertions run: */, ""); a = $1 + 0; have = 1 }
+                /^Assertions failed: *[0-9]+/ { sub(/^Assertions failed: */, ""); f = $1 + 0 }
+                /^[0-9]+ assertions, [0-9]+ failed/ { a = $1 + 0; f = $3 + 0; have = 1 }
+                END { if (have) print a, f + 0 }' "$log")"
+            a=0
+            f=0
+            if [ -n "$counts" ]; then
+                a="${counts% *}"
+                f="${counts#* }"
+            fi
+            if [ "$code" -eq 124 ]; then
+                status=timeout
+                a=0
+                f=0
+            elif [ "$code" -ge 128 ] || { [ "$code" -ne 0 ] && [ -z "$counts" ]; }; then
+                status=crash
+                a=0
+                f=0
+            elif [ "$code" -eq 0 ] && [ -n "$counts" ] && [ "$a" -ge 1 ] && [ "$f" -eq 0 ]; then
+                status=pass
+            else
+                status=fail
+                [ "$f" -ge 1 ] || f=1
+                if [ "$code" -eq 77 ]; then
+                    echo "suite $name: exit 77 (skip) is a failure here" >&2
+                elif [ "$code" -eq 0 ]; then
+                    echo "suite $name: exit 0 but no usable assertion count" >&2
+                fi
+            fi
+            R_SUITES+=("suite: $prefix$name $status $a $f $(( $(date +%s) - t0 ))")
+            R_ASSERT=$((R_ASSERT + a))
+            R_FAILED=$((R_FAILED + f))
+            if [ "$status" != pass ]; then
+                R_BAD=$((R_BAD + 1))
+                rc=1
+                echo "suite $prefix$name: $status (exit $code)" >&2
+            fi
+        done
+    done
+    return "$rc"
+}
+
+# ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 
-# run_label <label> [ctest args...]
+# run_label <verb> <ctest label = category> [-R regex]
 run_label() {
-    local label="$1"
-    shift
-    build_debug_into "$BUILD_DIR_TEST"
+    local verb="$1" label="$2"
+    shift 2
+    SUITE_FILTER=""
+    case "${1:-}" in
+        "") ;;
+        -R) [ $# -eq 2 ] || { echo "$verb: -R takes one regex" >&2; return 2; }
+            SUITE_FILTER="$2" ;;
+        *)  echo "$verb: expected nothing or -R REGEX, got '$*'" >&2; return 2 ;;
+    esac
+    result_begin "$verb"
+    build_debug_into "$BUILD_DIR_TEST" || return 1
     # Evidence of an earlier run would be taken for this run's.
     if [ -d "$SCRIPT_DIR/build/_test/evidence" ]; then
         ( cd "$SCRIPT_DIR/build/_test" && rm -rf evidence )
@@ -206,20 +387,19 @@ run_label() {
     # (report, screen, screen with colours) under the build tree.  The
     # status is kept, not discarded, and returned after the hint.
     local rc=0
-    PTYTEST_EVIDENCE_DIR="$BUILD_DIR_TEST/evidence" \
-    ASAN_OPTIONS="halt_on_error=1:detect_leaks=1" \
-    UBSAN_OPTIONS="halt_on_error=1:print_stacktrace=1" \
-        ctest --test-dir "$BUILD_DIR_TEST" -L "^${label}\$" \
-              --output-on-failure --no-tests=error "$@" || rc=$?
+    export PTYTEST_EVIDENCE_DIR="$BUILD_DIR_TEST/evidence"
+    export ASAN_OPTIONS="halt_on_error=1:detect_leaks=1"
+    export UBSAN_OPTIONS="halt_on_error=1:print_stacktrace=1"
+    run_suites "" "$BUILD_DIR_TEST" "$label" || rc=$?
     if [ -d "$BUILD_DIR_TEST/evidence" ]; then
         echo "Evidence of failed assertions: $BUILD_DIR_TEST/evidence"
     fi
     return "$rc"
 }
 
-run_unit() { run_label unit "$@"; }
-run_pty()  { run_label pty "$@"; }
-run_functional() { run_label functional "$@"; }
+run_unit() { run_label test unit "$@"; }
+run_pty()  { run_label pty pty "$@"; }
+run_functional() { run_label functional functional "$@"; }
 
 # functional-coverage: the checker must be able to fail (its self-test), then
 # the map (policies/testing-model.md, "Every capability has a functional test").
@@ -228,7 +408,15 @@ run_functional_coverage() {
     "$SCRIPT_DIR/tools/check-functional-coverage.sh"
 }
 
+# result-format: the runner and the result file must be able to fail (the
+# self-test), then the files the verbs left.
+run_result_format() {
+    "$SCRIPT_DIR/tools/check-result.sh" --self-test
+    "$SCRIPT_DIR/tools/check-result.sh"
+}
+
 run_valgrind() {
+    result_begin valgrind
     if ! command -v valgrind >/dev/null; then
         echo "valgrind is not installed; install it with: ./manage.sh deps" >&2
         return 1
@@ -236,25 +424,44 @@ run_valgrind() {
     # A clean Release build: sanitiser and coverage instrumentation both
     # interfere with Valgrind's own.  Children of the tests (the fixture,
     # cat, sh) are not traced: the library is what is under examination.
+    # Every unit suite, and only the unit suites (a kind with its own verb
+    # is not run here).
     cmake -S "$SCRIPT_DIR" -B "$BUILD_DIR_VALGRIND" -DCMAKE_BUILD_TYPE=Release \
           -DENABLE_COVERAGE=OFF -DPTYTEST_ENABLE_ASAN=OFF -DPTYTEST_BUILD_TESTS=ON \
-          "-DPTYTEST_TEST_WRAPPER=valgrind;--error-exitcode=1;--leak-check=full;--errors-for-leak-kinds=definite;--track-fds=no;--quiet"
-    cmake --build "$BUILD_DIR_VALGRIND" --parallel "$JOBS"
-    check_test_bins "$BUILD_DIR_VALGRIND"
-    ctest --test-dir "$BUILD_DIR_VALGRIND" --output-on-failure --no-tests=error
+          -DPTYTEST_TEST_WRAPPER= || return 1
+    cmake --build "$BUILD_DIR_VALGRIND" --parallel "$JOBS" || return 1
+    check_test_bins "$BUILD_DIR_VALGRIND" || return 1
+    SUITE_FILTER=""
+    run_suites "" "$BUILD_DIR_VALGRIND" unit \
+        "valgrind;--error-exitcode=1;--leak-check=full;--errors-for-leak-kinds=definite;--track-fds=no;--quiet"
 }
 
-# coverage_of <name> <ctest label regex>: runs only the tests of those
-# categories on zeroed counters and leaves <name>.info, product code only.
-coverage_of() {
-    local name="$1" labels="$2" info="$BUILD_DIR_COVERAGE/coverage-$1.info"
-    lcov --zerocounters --directory "$BUILD_DIR_COVERAGE"
-    # The tests' verdict counts: a failing test fails the coverage run.
-    ctest --test-dir "$BUILD_DIR_COVERAGE" -L "$labels" \
-          --output-on-failure --no-tests=error
-    lcov --capture --directory "$BUILD_DIR_COVERAGE" --output-file "$info.all"
+# coverage_scope <scope> <categories>: an instrumented build tree of its own
+# under build/coverage/<scope>/, counters zeroed, only those suites run on
+# it, then <scope>.info, product code only.
+coverage_scope() {
+    local scope="$1" cats="$2" dir="$BUILD_DIR_COVERAGE/$1" rc=0
+    local info="$BUILD_DIR_COVERAGE/coverage-$1.info" sum
+    cmake -S "$SCRIPT_DIR" -B "$dir" -DCMAKE_BUILD_TYPE=Debug \
+          -DENABLE_COVERAGE=ON -DPTYTEST_ENABLE_ASAN=OFF -DPTYTEST_BUILD_TESTS=ON \
+          -DPTYTEST_TEST_WRAPPER= || return 1
+    cmake --build "$dir" --parallel "$JOBS" || return 1
+    check_test_bins "$dir" || return 1
+    lcov --zerocounters --directory "$dir" || return 1
+    # The tests' verdict counts: a failing suite fails the coverage run, but
+    # the other suites and the capture still happen.
+    SUITE_FILTER=""
+    run_suites "$scope/" "$dir" "$cats" || rc=1
+    lcov --capture --directory "$dir" --output-file "$info.all" || return 1
     # Product code only, one list for every report: the library sources.
-    lcov --extract "$info.all" "$SCRIPT_DIR/src/*" --output-file "$info"
+    lcov --extract "$info.all" "$SCRIPT_DIR/src/*" --output-file "$info" || return 1
+    sum="$(lcov --summary "$info" | sed -n 's/.*lines\.*: *[0-9.]*% (\([0-9]*\) of \([0-9]*\) lines).*/\1 \2/p')"
+    if [ -z "$sum" ]; then
+        echo "coverage: could not read the line counts of $info" >&2
+        return 1
+    fi
+    R_SCOPES+=("scope: $scope build/coverage/$scope ${sum% *} ${sum#* }")
+    return "$rc"
 }
 
 # line_rate <info>: the line coverage percentage lcov reports.
@@ -272,25 +479,24 @@ line_rate() {
 # each on product code (src/) only --
 #   - the unit tests alone;
 #   - the tests that drive the program from outside (functional, pty,
-#     integration; this project has pty) together;
-# and the two together, held to this project's own higher threshold.
+#     integration) together;
+# and the two together, held to this project's own higher threshold.  The
+# instrumented trees and their counters stay in build/coverage/unit and
+# build/coverage/external for the integrator.
 run_coverage() {
+    result_begin coverage
     if ! command -v lcov >/dev/null; then
         echo "lcov is not installed; install it with: ./manage.sh deps" >&2
         return 1
     fi
-    cmake -S "$SCRIPT_DIR" -B "$BUILD_DIR_COVERAGE" -DCMAKE_BUILD_TYPE=Debug \
-          -DENABLE_COVERAGE=ON -DPTYTEST_ENABLE_ASAN=OFF -DPTYTEST_BUILD_TESTS=ON \
-          -DPTYTEST_TEST_WRAPPER=
-    cmake --build "$BUILD_DIR_COVERAGE" --parallel "$JOBS"
-    check_test_bins "$BUILD_DIR_COVERAGE"
-
-    coverage_of unit '^unit$'
-    coverage_of external '^(functional|pty|integration)$'
-    local dir="$BUILD_DIR_COVERAGE"
+    local dir="$BUILD_DIR_COVERAGE" failed=0
+    mkdir -p "$dir"
+    coverage_scope unit unit || failed=1
+    coverage_scope external "functional pty integration" || failed=1
+    [ -f "$dir/coverage-unit.info" ] && [ -f "$dir/coverage-external.info" ] || return 1
     lcov --add-tracefile "$dir/coverage-unit.info" \
          --add-tracefile "$dir/coverage-external.info" \
-         --output-file "$dir/coverage-all.info"
+         --output-file "$dir/coverage-all.info" || return 1
 
     local f
     for f in unit external all; do
@@ -302,7 +508,7 @@ run_coverage() {
         echo "HTML report: $dir/html/index.html"
     fi
 
-    local unit ext all failed=0
+    local unit ext all
     unit="$(line_rate "$dir/coverage-unit.info")"
     ext="$(line_rate "$dir/coverage-external.info")"
     all="$(line_rate "$dir/coverage-all.info")"
@@ -394,38 +600,42 @@ do_package() {
     find "$PACKAGE_DIR" -mindepth 1 | sort
 }
 
-# tag
+# tag-build VERSION
 #
-# The tag follows the package version and never decides it: v<version> is
-# the exact Debian version the build carries (build/version.txt, written by
-# CMake from project_version.<commit count>), on the commit that was built.
-# The message lists the ticket keys named in the commits since the previous
-# tag.  A tag that exists at HEAD is left as it is; one at another commit is
-# an error, not moved.
-do_tag() {
-    local version tag head prev range keys
-    if [ ! -f "$BUILD_DIR/version.txt" ]; then
-        echo "tag: $BUILD_DIR/version.txt missing; run './manage.sh package' first" >&2
-        return 1
+# The tag follows the package version and never decides it: vVERSION is the
+# exact Debian version the build carries (build/version.txt), on the commit
+# that was built.  The message lists the ticket keys named in the commits
+# since the previous tag.  A tag that exists at HEAD is left as it is; one at
+# another commit is an error, not moved.  It never pushes: the host pushes the
+# tag with gh-push (policies/manage-sh-model.md).  MANAGE_TAG_REPO names
+# another repository (tools/check-tag-build.sh).
+do_tag_build() {
+    local version="${1:-}" repo="${MANAGE_TAG_REPO:-$SCRIPT_DIR}" tag head prev range keys
+    if [ -z "$version" ] || [ $# -gt 1 ]; then
+        echo "usage: ./manage.sh tag-build VERSION" >&2
+        return 2
     fi
-    version="$(cat "$BUILD_DIR/version.txt")"
+    case "$version" in
+        [0-9]*.[0-9]*) ;;
+        *) echo "tag-build: '$version' is not a version" >&2; return 2 ;;
+    esac
     tag="v$version"
-    head="$(git -C "$SCRIPT_DIR" rev-parse HEAD)" || return 1
-    if git -C "$SCRIPT_DIR" rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-        if [ "$(git -C "$SCRIPT_DIR" rev-parse "$tag^{commit}")" != "$head" ]; then
-            echo "tag: $tag exists at another commit than HEAD $head" >&2
+    head="$(git -C "$repo" rev-parse HEAD)" || return 1
+    if git -C "$repo" rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+        if [ "$(git -C "$repo" rev-parse "$tag^{commit}")" != "$head" ]; then
+            echo "tag-build: $tag exists at another commit than HEAD $head" >&2
             return 1
         fi
-        echo "tag: $tag already at HEAD"
-    else
-        prev="$(git -C "$SCRIPT_DIR" tag --list 'v*' --merged HEAD --sort=-v:refname | head -n 1)"
-        range="HEAD"
-        [ -z "$prev" ] || range="$prev..HEAD"
-        keys="$(git -C "$SCRIPT_DIR" log --format=%B "$range" \
-                | { grep -oE '[A-Z]+-[0-9]+' || [ $? -eq 1 ]; } | sort -u | tr '\n' ' ')"
-        git -C "$SCRIPT_DIR" tag -a "$tag" -m "libptytest $version: ${keys:-no ticket keys}" || return 1
+        echo "tag-build: $tag already at HEAD"
+        return 0
     fi
-    git -C "$SCRIPT_DIR" push origin "refs/tags/$tag"
+    prev="$(git -C "$repo" tag --list 'v*' --merged HEAD --sort=-v:refname | head -n 1)"
+    range="HEAD"
+    [ -z "$prev" ] || range="$prev..HEAD"
+    keys="$(git -C "$repo" log --format=%B "$range" \
+            | { grep -oE '[A-Z]+-[0-9]+' || [ $? -eq 1 ]; } | sort -u | tr '\n' ' ')"
+    git -C "$repo" tag -a "$tag" -m "libptytest $version: ${keys:-no ticket keys}" || return 1
+    echo "tag-build: $tag made at $head (not pushed)"
 }
 
 package_failed() {
@@ -553,7 +763,7 @@ run_check() {
     local logdir="$BUILD_DIR/_logs"
     mkdir -p "$logdir"
 
-    local gates="licence private-names functional-coverage test-bins version timing-log test-base-check unit pty functional valgrind coverage package consumer package-output"
+    local gates="licence private-names functional-coverage test-bins version tag-build-test timing-log test-base-check unit pty functional valgrind coverage result-format package consumer package-output"
     local -A result
     local g rc failed=0
     for g in $gates; do
@@ -687,6 +897,9 @@ run_timing() {
     return "$rc"
 }
 
+# tools/check-result.sh sources this file to test the runner.
+[ -z "${MANAGE_SOURCE_ONLY:-}" ] || return 0
+
 cmd="${1:-help}"
 [ $# -gt 0 ] && shift
 
@@ -696,7 +909,7 @@ cmd="${1:-help}"
 # starts (check runs its gates this way) are timed in turn.
 case "$cmd" in
     deps|test-base|build|debug|test|pty|functional|functional-coverage|coverage|valgrind|consumer|\
-    licence|private-names|test-bins|version|timing-log|test-base-check|check|package)
+    licence|private-names|test-bins|version|tag-build-test|timing-log|test-base-check|result-format|check|package)
         if [ -z "${MANAGE_INNER:-}" ]; then
             t_start="$(date +%s)"
             t_rc=0
@@ -736,14 +949,16 @@ case "$cmd" in
     check)     run_check ;;
     timing)    run_timing "$@" ;;
     version)   "$SCRIPT_DIR/tools/check-version.sh" ;;
-    tag)       do_tag ;;
+    tag-build) do_tag_build "$@" ;;
+    tag-build-test) "$SCRIPT_DIR/tools/check-tag-build.sh" ;;
     timing-log) "$SCRIPT_DIR/tools/check-timing.sh" ;;
+    result-format) run_result_format ;;
     package)   do_package "${1:-deb}" ;;
     clean)     clean ;;
     help|-h|--help) usage ;;
     *)
         echo "unknown command: $cmd" >&2
         usage >&2
-        exit 1
+        exit 2
         ;;
 esac

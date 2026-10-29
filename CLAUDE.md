@@ -20,8 +20,6 @@ human.
 - `project-boundaries-model.md` — write only inside this directory; working
   files under `build/`
 
-`requirements/`, if it exists, is human-authored and never edited by an agent.
-
 ## Commands
 
 ```bash
@@ -29,9 +27,17 @@ human.
 ./manage.sh pty        # PTY tests (ASAN + UBSan)
 ./manage.sh functional # functional tests: public API, real child, real PTY
 ./manage.sh functional-coverage # every exported function/macro has a row in docs/functional-coverage.md
-./manage.sh check      # every gate: licence, private-names, test-bins, version, timing-log, test-base-check, unit, pty, valgrind, coverage, package (+lintian), consumer, package-output
+./manage.sh result-format # self-test of the suite runner and the result file, then build/result/*.result and build/coverage/{unit,external}
+./manage.sh check      # every gate: licence, private-names, test-bins, version, tag-build-test, timing-log, test-base-check, unit, pty, valgrind, coverage, result-format, package (+lintian), consumer, package-output
 build/_test/tests/unit/bin/test_screen <substring>   # one test
 ```
+
+`test`, `functional`, `pty`, `valgrind` and `coverage` run the built suites
+themselves (`run_suites` in `manage.sh`, no ctest) and write
+`build/result/<verb>.result` (policies/manage-sh-model.md); `test -R REGEX`
+selects suites. `coverage` leaves its instrumented trees and counters in
+`build/coverage/unit` and `build/coverage/external`. `tools/check-result.sh`
+holds the self-test.
 
 Tests are declared one per line in `tests/CMakeLists.txt` as
 `project_test(<category> <name> SOURCES ...)` and built into
