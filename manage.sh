@@ -48,6 +48,15 @@ COVERAGE_UNIT_THRESHOLD=80
 COVERAGE_EXTERNAL_THRESHOLD=80
 COVERAGE_THRESHOLD=90
 
+# QA 1 (check) skips the test suites when every path changed against the
+# mainline matches one of these shell patterns (policies/testing-model.md,
+# "QA levels").  Anything else, a test file included, runs all of QA 1.
+NON_CODE_PATHS='*.md docs/* man/* LICENSE .gitignore'
+# The suites QA 1 skips for such a diff.
+QA1_SUITES="unit pty functional"
+# The ref the changed paths are read against (the mainline).
+QA_BASE="${MANAGE_QA_BASE:-origin/main}"
+
 JOBS="$(nproc)"
 
 usage() {
@@ -79,8 +88,16 @@ Commands:
                         docs/functional-coverage.md
   private-names         Self-test tools/check-private-names.sh, then fail if a
                         tracked file names the owner's private domain
-  check                 Every gate, with a summary to compare against CI; includes
-                        tools/check-package-output.sh, which proves the rule above
+  check                 QA 1: licence, private-names, functional-coverage, test-bins,
+                        version, unit, pty, functional, package, consumer, the
+                        package-output check and the self-tests; no valgrind and
+                        no coverage.  When every path changed against the mainline
+                        is non-code (NON_CODE_PATHS) the suites are skipped and
+                        it says so.  Prints a summary to compare against CI
+  check-deep            QA 2: unit, pty, functional (ASAN + UBSan), valgrind,
+                        coverage and result-format; results in build/result/
+  qa-levels-test        Self-test tools/check-qa-levels.sh: which gates check
+                        and check-deep run, and when check skips the suites
   package [deb|rpm|all] Build the packages into build/packages/ (emptied first;
                         left empty, exit non-zero, if the build, lintian or the
                         upward-only dependency check fails)
@@ -758,12 +775,64 @@ run_consumer() {
 # check -- every gate, each with its log, and a summary.
 # ---------------------------------------------------------------------------
 
-run_check() {
+# changed_paths: the paths changed against the mainline (committed, staged,
+# unstaged and untracked), one per line.  Fails, printing nothing, when the
+# base is unknown: the caller then runs everything.
+changed_paths() {
+    local base
+    base="$(git -C "$SCRIPT_DIR" merge-base HEAD "$QA_BASE")" || return 1
+    git -C "$SCRIPT_DIR" diff --name-only "$base" || return 1
+    git -C "$SCRIPT_DIR" ls-files --others --exclude-standard
+}
+
+# all_non_code: reads paths on stdin; succeeds only if there is at least one
+# and every one matches NON_CODE_PATHS.
+all_non_code() {
+    local path pat n=0 hit
+    # The patterns must stay patterns: no expansion against the cwd.
+    set -f
+    while IFS= read -r path; do
+        [ -n "$path" ] || continue
+        n=$((n + 1))
+        hit=0
+        for pat in $NON_CODE_PATHS; do
+            # shellcheck disable=SC2254
+            case "$path" in $pat) hit=1; break ;; esac
+        done
+        [ "$hit" -eq 1 ] || { set +f; return 1; }
+    done
+    set +f
+    [ "$n" -gt 0 ]
+}
+
+# The gates, in order.  The cheap ones always run.
+CHEAP_GATES="licence private-names functional-coverage test-bins version tag-build-test timing-log test-base-check qa-levels-test"
+PACKAGE_GATES="package consumer package-output"
+
+# qa1_gates: reads the changed paths on stdin and prints the gates of QA 1,
+# one line; for a non-code diff it prints the skip notice on stderr and the
+# suites are left out.  No valgrind, no coverage, ever.
+qa1_gates() {
+    if all_non_code; then
+        echo "no code changed: suites skipped: $QA1_SUITES" >&2
+        echo "$CHEAP_GATES $PACKAGE_GATES"
+    else
+        echo "$CHEAP_GATES $QA1_SUITES $PACKAGE_GATES"
+    fi
+}
+
+# qa2_gates: the gates of check-deep.
+qa2_gates() {
+    echo "unit pty functional valgrind coverage result-format"
+}
+
+# run_gates <gates>: each gate with its log, and a summary.
+run_gates() {
     mkdir -p "$BUILD_DIR"
     local logdir="$BUILD_DIR/_logs"
     mkdir -p "$logdir"
 
-    local gates="licence private-names functional-coverage test-bins version tag-build-test timing-log test-base-check unit pty functional valgrind coverage result-format package consumer package-output"
+    local gates="$1"
     local -A result
     local g rc failed=0
     for g in $gates; do
@@ -794,8 +863,11 @@ run_check() {
     echo
     echo "=== summary ==="
     for g in $gates; do printf '%-15s %s\n' "$g" "${result[$g]}"; done
-    if ! grep -h -E '^(Assertions run|Line coverage)' "$logdir/unit.log" \
-             "$logdir/pty.log" "$logdir/coverage.log"; then
+    local logs=() l
+    for l in unit pty coverage; do
+        [ -f "$logdir/$l.log" ] && logs+=("$logdir/$l.log")
+    done
+    if [ "${#logs[@]}" -eq 0 ] || ! grep -h -E '^(Assertions run|Line coverage)' "${logs[@]}"; then
         echo "  (no assertion counts or coverage figure found in the logs)"
     fi
     if [ "$failed" -ne 0 ]; then
@@ -803,6 +875,23 @@ run_check() {
         return 1
     fi
     echo "All gates passed."
+}
+
+# check: QA 1.  A base that cannot be read means everything runs.
+run_check() {
+    local paths gates
+    if paths="$(changed_paths)"; then
+        gates="$(printf '%s\n' "$paths" | qa1_gates)"
+    else
+        echo "check: cannot read the changes against $QA_BASE: running all of QA 1" >&2
+        gates="$(printf '' | qa1_gates)"
+    fi
+    run_gates "$gates"
+}
+
+# check-deep: QA 2.
+run_check_deep() {
+    run_gates "$(qa2_gates)"
 }
 
 clean() {
@@ -909,7 +998,7 @@ cmd="${1:-help}"
 # starts (check runs its gates this way) are timed in turn.
 case "$cmd" in
     deps|test-base|build|debug|test|pty|functional|functional-coverage|coverage|valgrind|consumer|\
-    licence|private-names|test-bins|version|tag-build-test|timing-log|test-base-check|result-format|check|package)
+    licence|private-names|test-bins|version|tag-build-test|timing-log|test-base-check|qa-levels-test|result-format|check|check-deep|package)
         if [ -z "${MANAGE_INNER:-}" ]; then
             t_start="$(date +%s)"
             t_rc=0
@@ -947,6 +1036,8 @@ case "$cmd" in
     private-names) run_private_names ;;
     test-bins) run_test_bins ;;
     check)     run_check ;;
+    check-deep) run_check_deep ;;
+    qa-levels-test) "$SCRIPT_DIR/tools/check-qa-levels.sh" ;;
     timing)    run_timing "$@" ;;
     version)   "$SCRIPT_DIR/tools/check-version.sh" ;;
     tag-build) do_tag_build "$@" ;;
