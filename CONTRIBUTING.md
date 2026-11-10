@@ -29,7 +29,8 @@ licence is not GPL-3.0-only compatible.
 ## Checks
 
 ```sh
-./manage.sh check     # every gate, including licence, lintian and the coverage floors
+./manage.sh check     # QA 1: every gate but valgrind and coverage (licence, lintian, ...)
+./manage.sh check-deep # QA 2: valgrind and the coverage floors
 ```
 
 A change that is not covered by a test which can fail is not finished.

@@ -27,8 +27,9 @@ human.
 ./manage.sh pty        # PTY tests (ASAN + UBSan)
 ./manage.sh functional # functional tests: public API, real child, real PTY
 ./manage.sh functional-coverage # every exported function/macro has a row in docs/functional-coverage.md
-./manage.sh result-format # self-test of the suite runner and the result file, then build/result/*.result and build/coverage/{unit,external}
-./manage.sh check      # every gate: licence, private-names, test-bins, version, tag-build-test, timing-log, test-base-check, unit, pty, valgrind, coverage, result-format, package (+lintian), consumer, package-output
+./manage.sh result-format # (part of check-deep) self-test of the suite runner and the result file, then build/result/*.result and build/coverage/{unit,external}
+./manage.sh check      # QA 1: licence, private-names, test-bins, version, tag-build-test, timing-log, test-base-check, qa-levels-test, unit, pty, functional, package (+lintian), consumer, package-output; no valgrind/coverage; a docs-only diff skips the suites
+./manage.sh check-deep # QA 2: unit, pty, functional, valgrind, coverage, result-format (run by the checker agent, not per ticket)
 build/_test/tests/unit/bin/test_screen <substring>   # one test
 ```
 
