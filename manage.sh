@@ -116,8 +116,9 @@ Commands:
                         coverage counters left by the verbs run before
   timing-log            Self-test tools/check-timing.sh: the timing record and
                         the gate line, including "not measured"
-  timing [KEY-N]        Print the gate line from build/timing.log; with a key,
-                        also comment it on that ticket with issue-cli
+  timing [KEY-N]        Print "Gate 1 (PROJECT[, KEY-N]): <total>s (check, package,
+                        install)" from build/timing.log; with a key, the line
+                        names the ticket and is also commented on it (issue-cli)
   clean                 Remove build/
   help                  This message
 
@@ -927,12 +928,15 @@ gate_record() {
         }' "$TIMING_LOG"
 }
 
-# gate_line: prints "Gate: <total>s (check <s>s, package <s>s, install <s>s)"
-# from the record; a part with no record is left out.  With nothing recorded:
-# "Gate: not measured", exit status 1.
+# gate_line [KEY-N]: prints "Gate 1 (PROJECT, KEY-N): <total>s (check <s>s,
+# package <s>s, install <s>s)" from the record; PROJECT is the directory name
+# of the project, ", KEY-N" is left out with no key; a part with no record is
+# left out.  With nothing recorded: "Gate 1 (PROJECT, KEY-N): not measured",
+# exit status 1.
 gate_line() {
-    local line=""
-    line="$(gate_record | awk '
+    local line="" who
+    who="$(basename "$SCRIPT_DIR")${1:+, $1}"
+    line="$(gate_record | awk -v who="$who" '
         {
             v = ($2 == "install-deb") ? "install" : $2
             secs[v] = $3; sub("s$", "", secs[v])
@@ -947,10 +951,10 @@ gate_line() {
                     total += secs[v]; n++
                 }
             }
-            if (n) printf "Gate: %ds (%s)\n", total, parts
+            if (n) printf "Gate 1 (%s): %ds (%s)\n", who, total, parts
         }')"
     if [ -z "$line" ]; then
-        echo "Gate: not measured"
+        echo "Gate 1 ($who): not measured"
         return 1
     fi
     echo "$line"
@@ -962,7 +966,7 @@ gate_line() {
 # record, so its line is posted even when the text is identical.
 run_timing() {
     local line rc=0 record sum posted tmp
-    line="$(gate_line)" || rc=$?
+    line="$(gate_line "${1:-}")" || rc=$?
     echo "$line"
     if [ -n "${1:-}" ]; then
         record="$(gate_record)"

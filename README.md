@@ -144,7 +144,7 @@ cmake/          package config, pkg-config template, .deb build metadata
                         # skips the suites when only docs/man/*.md/LICENSE changed
 ./manage.sh check-deep  # QA 2: unit, pty, functional, valgrind, coverage, result-format
 ./manage.sh result-format  # the runner and build/result/<verb>.result (test, functional, pty, valgrind, coverage), the coverage counters
-./manage.sh timing [KEY-N]  # gate line from build/timing.log (every verb appends its seconds); with a key, comments it on the ticket
+./manage.sh timing [KEY-N]  # "Gate 1 (PROJECT, KEY-N): ..." line from build/timing.log (every verb appends its seconds); with a key, names and comments it on the ticket
 ```
 
 One test: `build/_test/tests/test-screen test_utf8` (substring filter, `-l`

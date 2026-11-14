@@ -20,6 +20,7 @@ trap 'rm -f "$tmp/timing.log" "$tmp/timing.posted" "$tmp/count" "$tmp/issue-cli"
 
 export MANAGE_TIMING_LOG="$tmp/timing.log"
 fails=0
+P="$(basename "$ROOT")"
 
 fail() { echo "check-timing: FAIL: $1" >&2; fails=$((fails + 1)); }
 
@@ -32,22 +33,22 @@ expect_line() {
 }
 
 # 1. No record: honest gap, non-zero exit.
-rc="$(expect_line "no log" "Gate: not measured")"
+rc="$(expect_line "no log" "Gate 1 ($P): not measured")"
 [ "$rc" -ne 0 ] || fail "no log: exit status was 0"
 
 # 2. An empty record is the same.
 : > "$MANAGE_TIMING_LOG"
-rc="$(expect_line "empty log" "Gate: not measured")"
+rc="$(expect_line "empty log" "Gate 1 ($P): not measured")"
 [ "$rc" -ne 0 ] || fail "empty log: exit status was 0"
 
 # 3. Only a verb outside the gate: nothing to report.
 printf '2026-10-11T10:00:00Z test 7s ok\n' > "$MANAGE_TIMING_LOG"
-rc="$(expect_line "test only" "Gate: not measured")"
+rc="$(expect_line "test only" "Gate 1 ($P): not measured")"
 [ "$rc" -ne 0 ] || fail "test only: exit status was 0"
 
 # 4. check alone: the other parts are left out, not guessed.
 printf '2026-10-11T10:00:00Z check 100s ok\n' > "$MANAGE_TIMING_LOG"
-rc="$(expect_line "check only" "Gate: 100s (check 100s)")"
+rc="$(expect_line "check only" "Gate 1 ($P): 100s (check 100s)")"
 [ "$rc" -eq 0 ] || fail "check only: exit status $rc"
 
 # 5. The latest run of each verb counts; a failed run does not.
@@ -58,7 +59,7 @@ cat > "$MANAGE_TIMING_LOG" <<'LOG'
 2026-10-11T10:11:00Z package 5s fail
 2026-10-11T10:12:00Z install-deb 3s ok
 LOG
-rc="$(expect_line "latest runs" "Gate: 113s (check 90s, package 20s, install 3s)")"
+rc="$(expect_line "latest runs" "Gate 1 ($P): 113s (check 90s, package 20s, install 3s)")"
 [ "$rc" -eq 0 ] || fail "latest runs: exit status $rc"
 
 # 6. With a key the very same line is commented through issue-cli.
@@ -68,8 +69,26 @@ printf '%s\n' "\$@" > "$tmp/args"
 STUB
 chmod +x "$tmp/issue-cli"
 ISSUE_CLI="$tmp/issue-cli" "$MANAGE" timing KEY-1 > "$tmp/out"
-want="$(printf 'issue\ncomment\nKEY-1\nGate: 113s (check 90s, package 20s, install 3s)')"
+want="$(printf 'issue\ncomment\nKEY-1\n%s' "Gate 1 ($P, KEY-1): 113s (check 90s, package 20s, install 3s)")"
 [ "$(cat "$tmp/args")" = "$want" ] || fail "key: issue-cli got: $(tr '\n' '|' < "$tmp/args")"
+
+# 6b. The printed line names the gate, the project and the key; with no key
+# the key part is left out; nothing measured still names them.
+grep -qxF "Gate 1 ($P, KEY-1): 113s (check 90s, package 20s, install 3s)" "$tmp/out" \
+    || fail "key: printed line wrong: $(cat "$tmp/out")"
+ISSUE_CLI="$tmp/issue-cli" "$MANAGE" timing > "$tmp/out"
+grep -qxF "Gate 1 ($P): 113s (check 90s, package 20s, install 3s)" "$tmp/out" \
+    || fail "no key: printed line wrong: $(cat "$tmp/out")"
+grep -q 'KEY' "$tmp/out" && fail "no key: key part present"
+printf '2026-10-11T10:00:00Z test 7s ok\n' > "$MANAGE_TIMING_LOG"
+rc=0; ISSUE_CLI="$tmp/issue-cli" "$MANAGE" timing KEY-4 > "$tmp/out" || rc=$?
+[ "$(cat "$tmp/out")" = "Gate 1 ($P, KEY-4): not measured" ] || fail "key, nothing measured: $(cat "$tmp/out")"
+[ "$rc" -ne 0 ] || fail "key, nothing measured: exit status was 0"
+cat > "$MANAGE_TIMING_LOG" <<'LOG'
+2026-10-11T10:00:00Z check 90s ok
+2026-10-11T10:10:00Z package 20s ok
+2026-10-11T10:12:00Z install-deb 3s ok
+LOG
 
 # 7. A verb that succeeds appends an ok line, one that fails a fail line.
 : > "$MANAGE_TIMING_LOG"
