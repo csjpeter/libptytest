@@ -86,6 +86,42 @@ h="$(usage)"
 case "$h" in *"check-deep "*"QA 2"*) ;; *) fail "help does not describe check-deep as QA 2" ;; esac
 case "$h" in *"check "*"QA 1"*) ;; *) fail "help does not describe check as QA 1" ;; esac
 
+# 6b. "step N/M: NAME": one line per step, M = the steps that really run
+# (a docs-only diff has fewer), N counting from 1.  A stub manage.sh stands
+# in for the gates; the output is run_gates' own.
+stub="$tmp/stub"
+mkdir -p "$stub"
+printf '#!/bin/sh\nexit 0\n' > "$stub/manage.sh"
+mkdir "$stub/tools"
+cp "$stub/manage.sh" "$stub/tools/check-package-output.sh"
+chmod +x "$stub/manage.sh" "$stub/tools/check-package-output.sh"
+real_script_dir="$SCRIPT_DIR"
+real_build_dir="$BUILD_DIR"
+SCRIPT_DIR="$stub"
+BUILD_DIR="$stub/build"
+check_steps() { # <label> <gates>
+    local label="$1" gates="$2" n=0 g exp m
+    m="$(wc -w <<< "$gates")"
+    run_gates "$gates" > "$tmp/out" 2> "$tmp/err" || fail "$label: stub run failed: $(tail -n 3 "$tmp/out"; tail -n 3 "$tmp/err")"
+    exp=""
+    for g in $gates; do n=$((n + 1)); exp+="step $n/$m: $g"$'\n'; done
+    [ "$(grep -E '^step ' "$tmp/out")"$'\n' = "$exp" ] \
+        || fail "$label: step lines are '$(grep -E '^step ' "$tmp/out" | tr '\n' ';')', expected '$exp'"
+}
+docs_gates="$(printf '%s\n' README.md | qa1_gates 2> "$tmp/notice")"
+code_gates="$(printf '%s\n' src/a.c | qa1_gates 2> "$tmp/notice")"
+check_steps "check" "$code_gates"
+check_steps "check (docs only)" "$docs_gates"
+check_steps "check-deep" "$(qa2_gates)"
+[ "$(wc -w <<< "$docs_gates")" -lt "$(wc -w <<< "$code_gates")" ] || fail "skipped steps are counted in M"
+check_steps "single step" "unit"
+grep -qx 'step 1/1: unit' "$tmp/out" || fail "single step: no 'step 1/1: unit' line"
+SCRIPT_DIR="$real_script_dir"
+BUILD_DIR="$real_build_dir"
+rm -f "$stub/manage.sh" "$stub/tools/check-package-output.sh"
+rm -f "$stub/build/_logs"/*.log
+rmdir "$stub/build/_logs" "$stub/build" "$stub/tools" "$stub"
+
 # 7. The real diff against a base, in a throw-away repository.
 git init -q -b main "$tmp/repo"
 git -C "$tmp/repo" config user.email t@example.org
