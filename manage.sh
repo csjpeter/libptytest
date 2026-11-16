@@ -835,8 +835,13 @@ run_gates() {
 
     local gates="$1"
     local -A result
-    local g rc failed=0
+    local g rc failed=0 n=0 m
+    m="$(wc -w <<< "$gates")"
     for g in $gates; do
+        # policies/manage-sh-model.md: one "step N/M: NAME" line per step, M
+        # being the steps this run does (skipped ones are not in $gates).
+        n=$((n + 1))
+        echo "step $n/$m: $g"
         printf '%-15s ' "$g"
         rc=0
         # Each gate is a manage.sh process of its own.  Called as a function
