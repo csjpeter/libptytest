@@ -224,7 +224,9 @@ DSR 5 (status), DSR 6 (cursor position report), DA1 (as a VT220 with ANSI
 colour) and DA2.
 .TP
 .B Text
-UTF-8, with invalid and truncated sequences shown as U+FFFD.
+UTF-8, with invalid, truncated and overlong sequences (such as E0 80 9B for
+ESC) shown as U+FFFD, as xterm does.
+No cell ever holds a control byte.
 Character width comes from the C library's
 .BR wcwidth (3)
 in a UTF-8 locale, the function the program under test most likely uses:
