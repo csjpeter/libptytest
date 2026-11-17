@@ -91,6 +91,7 @@ typedef struct PtyScreen {
     /* UTF-8 decoder */
     uint32_t utf8_cp;
     int      utf8_need;
+    int      utf8_len;     /* continuation bytes the lead byte announced */
 
     /* Bytes the terminal answers with (DSR, DA), for the session to send */
     char     resp[PTY_RESP_MAX];

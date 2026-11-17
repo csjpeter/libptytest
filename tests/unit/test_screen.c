@@ -46,6 +46,23 @@ static const char *row(PtySession *s, int r) {
 
 /* ── Text and cursor ─────────────────────────────────────────────────── */
 
+static void test_overlong_utf8_is_replacement(void) {
+    PtySession *s = term(30, 3);
+    /* A, overlong ESC, "]0;X", overlong BEL, overlong LF, overlong 4-byte NUL, B */
+    feed(s, "A\xE0\x80\x9B]0;X\xE0\x80\x87\xE0\x80\x8A\xF0\x80\x80\x80" "B");
+    ASSERT_CELL_TEXT(s, 0, 0, "A");
+    ASSERT_CELL_TEXT(s, 0, 1, "\xEF\xBF\xBD");
+    ASSERT_ROW_EQ(s, 0, "A\xEF\xBF\xBD]0;X\xEF\xBF\xBD\xEF\xBF\xBD\xEF\xBF\xBD" "B");
+    ASSERT_CURSOR(s, 0, 10);
+    for (int c = 0; c < 30; c++) {
+        const char *t = pty_cell_text(s, 0, c);
+        for (const char *p = t; *p; p++)
+            if ((unsigned char)*p < 0x20 || *p == 0x7F)
+                PTY_ASSERT_FAIL_("cell %d holds control byte 0x%02X", c, (unsigned char)*p);
+    }
+    pty_close(s);
+}
+
 static void test_basic_write(void) {
     PtySession *s = term(20, 5);
     feed(s, "Hello");
@@ -729,6 +746,7 @@ static void test_screen_new_rejects_bad_sizes(void) {
 
 int main(int argc, char **argv) {
     static const TestCase tests[] = {
+        TEST_CASE(test_overlong_utf8_is_replacement),
         TEST_CASE(test_basic_write),
         TEST_CASE(test_newline_keeps_column),
         TEST_CASE(test_cr_lf),

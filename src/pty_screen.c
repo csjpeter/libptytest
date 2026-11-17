@@ -363,6 +363,8 @@ int pty_screen_resize(PtyScreen *scr, int cols, int rows) {
 /* ── Printing ────────────────────────────────────────────────────────── */
 
 static void put_char(PtyScreen *scr, uint32_t cp) {
+    /* No cell ever holds a control byte (dumps and reports print cells raw). */
+    if (cp < 0x20 || cp == 0x7F) cp = 0xFFFD;
     int graphics = scr->shift_out ? scr->g1_graphics : scr->g0_graphics;
     if (graphics && cp >= 0x5F && cp <= 0x7E) cp = dec_graphics[cp - 0x5F];
 
@@ -806,7 +808,10 @@ static void ground_byte(PtyScreen *scr, unsigned char ch) {
             scr->utf8_cp = (scr->utf8_cp << 6) | (ch & 0x3F);
             if (--scr->utf8_need == 0) {
                 uint32_t cp = scr->utf8_cp;
-                if (cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) cp = 0xFFFD;
+                /* Overlong forms (E0 80..9F, F0 80..8F, ...) are invalid, as in xterm. */
+                static const uint32_t min_cp[4] = { 0, 0x80, 0x800, 0x10000 };
+                if (cp < min_cp[scr->utf8_len] || cp > 0x10FFFF ||
+                    (cp >= 0xD800 && cp <= 0xDFFF)) cp = 0xFFFD;
                 if (cp >= 0x80 && cp < 0xA0) return;   /* C1 controls: not printed */
                 put_char(scr, cp);
             }
@@ -819,9 +824,9 @@ static void ground_byte(PtyScreen *scr, unsigned char ch) {
     if (ch < 0x20) { execute_c0(scr, ch); return; }
     if (ch < 0x7F) { put_char(scr, ch); return; }
     if (ch == 0x7F) return;
-    if (ch >= 0xC2 && ch <= 0xDF)      { scr->utf8_cp = ch & 0x1F; scr->utf8_need = 1; }
-    else if (ch >= 0xE0 && ch <= 0xEF) { scr->utf8_cp = ch & 0x0F; scr->utf8_need = 2; }
-    else if (ch >= 0xF0 && ch <= 0xF4) { scr->utf8_cp = ch & 0x07; scr->utf8_need = 3; }
+    if (ch >= 0xC2 && ch <= 0xDF)      { scr->utf8_cp = ch & 0x1F; scr->utf8_need = scr->utf8_len = 1; }
+    else if (ch >= 0xE0 && ch <= 0xEF) { scr->utf8_cp = ch & 0x0F; scr->utf8_need = scr->utf8_len = 2; }
+    else if (ch >= 0xF0 && ch <= 0xF4) { scr->utf8_cp = ch & 0x07; scr->utf8_need = scr->utf8_len = 3; }
     else put_char(scr, 0xFFFD);
 }
 
