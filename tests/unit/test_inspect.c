@@ -552,6 +552,26 @@ static void test_dump_c(void) {
     pty_close(s);
 }
 
+static void test_dump_c_safe_literal(void) {
+    PtySession *s = term(40, 2);
+    /* The trigraph ??/ becomes a backslash in ISO C and would end the literal. */
+    feed(s, "?\?/\",0};int pwned=7;//");
+    pty_feed(s, "\r\n\x01" "7\x7f", 5);
+    char *text = NULL;
+    size_t len = 0;
+    FILE *fp = open_memstream(&text, &len);
+    ASSERT(fp != NULL, "open_memstream");
+    pty_region_dump_c(s, NULL, fp);
+    fclose(fp);
+    ASSERT(strstr(text, "??") == NULL, "no unescaped ?? in the literal");
+    ASSERT(strstr(text, "\\?\\?/\\\",0};") != NULL, "? and \" escaped");
+    for (const char *p = text; *p; p++)
+        ASSERT(((unsigned char)*p >= 0x20 && *p != 0x7F) || *p == '\n',
+               "no raw control byte in the snapshot");
+    free(text);
+    pty_close(s);
+}
+
 static void test_dump_ansi(void) {
     PtySession *s = term(6, 2);
     feed(s, "a\033[1;31mb\033[0;38;5;9;48;2;1;2;3mc");
@@ -784,6 +804,7 @@ int main(int argc, char **argv) {
         TEST_CASE(test_assertion_saves_evidence),
         TEST_CASE(test_cell_describe),
         TEST_CASE(test_dump_c),
+        TEST_CASE(test_dump_c_safe_literal),
         TEST_CASE(test_dump_ansi),
         TEST_CASE(test_dump),
         TEST_CASE(test_cell_accessors_out_of_range),

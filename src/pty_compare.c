@@ -847,8 +847,13 @@ void pty_region_dump_c(PtySession *s, const PtyRegion *reg, FILE *fp) {
             const char *t = row[c];
             if (t[0] == '\0') { if (c == 0) fputc(' ', fp); continue; }
             for (; *t; t++) {
-                if (*t == '"' || *t == '\\') fputc('\\', fp);
-                fputc(*t, fp);
+                unsigned char ch = (unsigned char)*t;
+                if (ch < 0x20 || ch == 0x7F)
+                    fprintf(fp, "\\%03o", ch);   /* fixed width: no digit can join it */
+                else if (ch == '"' || ch == '\\' || ch == '?')
+                    fprintf(fp, "\\%c", ch);     /* \? defeats the trigraph ??/ */
+                else
+                    fputc(ch, fp);
             }
         }
         fputs("\",\n", fp);

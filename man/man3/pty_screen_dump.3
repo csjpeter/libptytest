@@ -32,8 +32,11 @@ prints a region
 .RI ( reg
 NULL: the whole screen) as a C array literal that can be pasted into a
 test as its expectation.
-Trailing blanks of each row and trailing blank rows are left out; quotes
-and backslashes are escaped.
+Trailing blanks of each row and trailing blank rows are left out; quotes,
+backslashes and question marks (\e? , so the trigraph ??/ cannot form) are
+escaped and every byte below 0x20 or 0x7F is written as a three-digit octal
+escape.
+No displayed text can end the literal or inject code, in any C mode.
 Take a snapshot only of a screen that has been checked by eye: a snapshot
 of a wrong screen makes a test that passes on the bug.
 .SH EXAMPLE
